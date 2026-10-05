@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect, useRef } from 'react';
 import { getMessages, sendMessage, markConversationRead } from '../../lib/chat';
+import { playNotificationSound } from '../../lib/sound';
 import { supabase } from '../../lib/supabase';
 
 export default function ChatDetailScreen({ user, conversation, onBack }) {
@@ -11,9 +12,13 @@ export default function ChatDetailScreen({ user, conversation, onBack }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const flatRef = useRef(null);
+  const messagesRef = useRef([]);
 
   const isMeStudent = conversation.student_id === user.id;
   const other = isMeStudent ? conversation.tutor : conversation.student;
+
+  // Giữ ref sync với state
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   const load = async () => {
     const data = await getMessages(conversation.id, 100);
@@ -25,47 +30,60 @@ export default function ChatDetailScreen({ user, conversation, onBack }) {
 
   useEffect(() => { load(); }, [conversation.id]);
 
-  // Realtime subscription
+  // Realtime subscribe
   useEffect(() => {
+    console.log('🔌 Subscribe channel:', conversation.id);
+
     const channel = supabase
-      .channel('messages-' + conversation.id)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${conversation.id}`,
-      }, async (payload) => {
-        // Bỏ qua nếu là tin mình vừa gửi (đã add optimistic)
-        if (payload.new.sender_id === user.id) {
-          // Update lại id thật + sender info
-          setMessages(prev => {
-            const withoutTemp = prev.filter(m => !String(m.id).startsWith('temp-'));
-            const exists = withoutTemp.some(m => m.id === payload.new.id);
-            if (exists) return withoutTemp;
-            return [...withoutTemp, { ...payload.new, sender: { id: user.id, full_name: user.full_name } }];
-          });
-          return;
-        }
-
-        // Fetch với sender info cho tin người khác
-        const { data } = await supabase
-          .from('messages')
-          .select(`*, sender:users!messages_sender_id_fkey (id, full_name)`)
-          .eq('id', payload.new.id)
-          .maybeSingle();
-
-        if (data) {
-          setMessages(prev => {
-            if (prev.some(m => m.id === data.id)) return prev;
-            return [...prev, data];
-          });
-          markConversationRead(conversation.id, user.id);
-          setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
-        }
+      .channel('chat-' + conversation.id, {
+        config: { broadcast: { self: false } },
       })
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        async (payload) => {
+          console.log('📩 New message realtime:', payload.new.id);
 
-    return () => { supabase.removeChannel(channel); };
+          // Nếu là tin mình gửi (đã add optimistic) → bỏ
+          if (payload.new.sender_id === user.id) {
+            setMessages(prev => {
+              const cleaned = prev.filter(m => !String(m.id).startsWith('temp-'));
+              if (cleaned.some(m => m.id === payload.new.id)) return cleaned;
+              return [...cleaned, { ...payload.new, sender: { id: user.id, full_name: user.full_name } }];
+            });
+            return;
+          }
+
+          // Tin người khác → fetch full sender info
+          const { data } = await supabase
+            .from('messages')
+            .select(`*, sender:users!messages_sender_id_fkey (id, full_name)`)
+            .eq('id', payload.new.id)
+            .maybeSingle();
+
+          if (data) {
+            setMessages(prev => {
+              if (prev.some(m => m.id === data.id)) return prev;
+              return [...prev, data];
+            });
+            markConversationRead(conversation.id, user.id);
+            setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Realtime status:', status);
+      });
+
+    return () => {
+      console.log('🔌 Unsubscribe');
+      supabase.removeChannel(channel);
+    };
   }, [conversation.id, user.id]);
 
   const handleSend = async () => {
@@ -74,7 +92,6 @@ export default function ChatDetailScreen({ user, conversation, onBack }) {
     const content = input.trim();
     const tempId = 'temp-' + Date.now();
 
-    // OPTIMISTIC: Hiện ngay lập tức
     const optimisticMsg = {
       id: tempId,
       conversation_id: conversation.id,
@@ -99,14 +116,12 @@ export default function ChatDetailScreen({ user, conversation, onBack }) {
     setSending(false);
 
     if (res.error) {
-      // Rollback
       setMessages(prev => prev.filter(m => m.id !== tempId));
       setInput(content);
       Alert.alert('Lỗi', res.error);
       return;
     }
 
-    // Thay temp bằng tin thật
     setMessages(prev => prev.map(m => m.id === tempId ? res.message : m));
   };
 
@@ -153,7 +168,6 @@ export default function ChatDetailScreen({ user, conversation, onBack }) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
