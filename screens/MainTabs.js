@@ -8,16 +8,21 @@ import ProfileScreen from './ProfileScreen';
 import TutorDetailScreen from './TutorDetailScreen';
 import BookingScreen from './BookingScreen';
 import PaymentScreen from './PaymentScreen';
+import AdminMainTabs from './AdminMainTabs';
 
-export default function MainTabs({ phone, onLogout }) {
+export default function MainTabs({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('home');
   const [selectedTutor, setSelectedTutor] = useState(null);
   const [bookingTutor, setBookingTutor] = useState(null);
-  const [bookingInfo, setBookingInfo] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [courses, setCourses] = useState([]);
+  const [showAdmin, setShowAdmin] = useState(false);
 
-  // Bước 1: Thanh toán
+  // Admin mode
+  if (showAdmin && user?.role === 'admin') {
+    return <AdminMainTabs user={user} onBack={() => setShowAdmin(false)} onLogout={onLogout} />;
+  }
+
   if (paymentInfo) {
     return (
       <PaymentScreen
@@ -37,7 +42,6 @@ export default function MainTabs({ phone, onLogout }) {
           };
           setCourses([newCourse, ...courses]);
           setPaymentInfo(null);
-          setBookingInfo(null);
           setBookingTutor(null);
           setSelectedTutor(null);
           setActiveTab('courses');
@@ -46,20 +50,16 @@ export default function MainTabs({ phone, onLogout }) {
     );
   }
 
-  // Bước 2: Đăng ký
   if (bookingTutor) {
     return (
       <BookingScreen
         tutor={bookingTutor}
         onBack={() => setBookingTutor(null)}
-        onSuccess={(booking) => {
-          setPaymentInfo({ tutor: bookingTutor, booking });
-        }}
+        onSuccess={(booking) => setPaymentInfo({ tutor: bookingTutor, booking })}
       />
     );
   }
 
-  // Bước 3: Chi tiết gia sư
   if (selectedTutor) {
     return (
       <TutorDetailScreen
@@ -73,12 +73,18 @@ export default function MainTabs({ phone, onLogout }) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {activeTab === 'home' && <HomeScreen phone={phone} onSelectTutor={setSelectedTutor} />}
+        {activeTab === 'home' && <HomeScreen phone={user?.phone} onSelectTutor={setSelectedTutor} />}
         {activeTab === 'courses' && (
           <CoursesScreen courses={courses} onFindTutor={() => setActiveTab('home')} />
         )}
         {activeTab === 'notifications' && <NotificationsScreen />}
-        {activeTab === 'profile' && <ProfileScreen phone={phone} onLogout={onLogout} />}
+        {activeTab === 'profile' && (
+          <ProfileScreen
+            user={user}
+            onLogout={onLogout}
+            onOpenAdmin={() => setShowAdmin(true)}
+          />
+        )}
       </View>
       <BottomNav activeTab={activeTab} onChange={setActiveTab} />
     </View>

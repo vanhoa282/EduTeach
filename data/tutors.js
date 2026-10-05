@@ -16,7 +16,7 @@ export const tutors = [
     experience: '5 năm',
     rating: 4.9,
     reviews: 128,
-    price: 200000,
+    price: 1000,
     avatar: 'https://i.pravatar.cc/150?img=12',
   },
   {
@@ -26,7 +26,7 @@ export const tutors = [
     experience: '3 năm',
     rating: 4.8,
     reviews: 95,
-    price: 180000,
+    price: 1000,
     avatar: 'https://i.pravatar.cc/150?img=45',
   },
   {
@@ -36,7 +36,7 @@ export const tutors = [
     experience: '4 năm',
     rating: 4.9,
     reviews: 76,
-    price: 220000,
+    price: 1000,
     avatar: 'https://i.pravatar.cc/150?img=32',
   },
   {
@@ -46,7 +46,7 @@ export const tutors = [
     experience: '6 năm',
     rating: 5.0,
     reviews: 210,
-    price: 250000,
+    price: 1000,
     avatar: 'https://i.pravatar.cc/150?img=15',
   },
 ];

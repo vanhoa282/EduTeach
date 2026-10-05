@@ -1,15 +1,19 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const API_URL = 'http://localhost:3000';
 
 const BANK_INFO = {
   bankName: 'ACB - Ngân hàng Á Châu',
-  accountNumber: '123456789',
+  accountNumber: '25317541',
   accountHolder: 'NGUYEN VAN HOA',
   branch: 'Chi nhánh TP.HCM',
 };
 
-const PAYMENT_TIMEOUT = 30 * 60; // 30 phút
+const PAYMENT_TIMEOUT = 30 * 60;
+const CHECK_TIMEOUT = 120; // 2 phút
 
 export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
   const [orderCode] = useState(() => 'EDT' + Math.floor(100000 + Math.random() * 900000));
@@ -17,11 +21,21 @@ export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
   const [billUploaded, setBillUploaded] = useState(false);
   const [copied, setCopied] = useState(null);
 
+  // State cho màn hình check
+  const [checking, setChecking] = useState(false);
+  const [checkStatus, setCheckStatus] = useState('idle'); // idle | checking | success | timeout
+  const [checkLeft, setCheckLeft] = useState(CHECK_TIMEOUT);
+  const pollRef = useRef(null);
+
   useEffect(() => {
-    if (timeLeft <= 0) return;
+    if (checking || timeLeft <= 0) return;
     const timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, checking]);
+
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
 
   const expired = timeLeft <= 0;
 
@@ -45,16 +59,55 @@ export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
     ]);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!billUploaded) {
       Alert.alert('Chưa có bill', 'Vui lòng upload bill chuyển khoản trước');
       return;
     }
-    Alert.alert(
-      'Đã gửi',
-      'Hệ thống đang kiểm tra tự động. Nếu sau 30 phút chưa match được, admin sẽ duyệt thủ công từ bill bạn đã upload.',
-      [{ text: 'OK', onPress: () => onSuccess && onSuccess() }]
-    );
+
+    setChecking(true);
+    setCheckStatus('checking');
+    setCheckLeft(CHECK_TIMEOUT);
+
+    // Đăng ký order với backend
+    try {
+      await fetch(`${API_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderCode, amount: booking.payNow }),
+      });
+      console.log('📤 Order registered:', orderCode);
+    } catch (e) {
+      console.log('⚠️ Order create failed:', e.message);
+    }
+
+    // Poll backend mỗi 5 giây
+    let elapsed = 0;
+    pollRef.current = setInterval(async () => {
+      elapsed += 5;
+      setCheckLeft(Math.max(0, CHECK_TIMEOUT - elapsed));
+
+      try {
+        const res = await fetch(`${API_URL}/api/orders/${orderCode}`);
+        const data = await res.json();
+        console.log('🔍 Poll:', data.order?.status);
+
+        if (data.order?.status === 'paid') {
+          clearInterval(pollRef.current);
+          setCheckStatus('success');
+          setTimeout(() => onSuccess && onSuccess(), 2500);
+          return;
+        }
+      } catch (e) {
+        console.log('⚠️ Poll error:', e.message);
+      }
+
+      if (elapsed >= CHECK_TIMEOUT) {
+        clearInterval(pollRef.current);
+        setCheckStatus('timeout');
+        setTimeout(() => onSuccess && onSuccess(), 3000);
+      }
+    }, 5000);
   };
 
   const handleRenew = () => {
@@ -64,6 +117,73 @@ export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
     ]);
   };
 
+  // ============ MÀN HÌNH CHECK ============
+  if (checking) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.checkContainer}>
+          {checkStatus === 'checking' && (
+            <>
+              <ActivityIndicator size="large" color="#2563EB" />
+              <Text style={styles.checkTitle}>Đang kiểm tra giao dịch</Text>
+              <Text style={styles.checkDesc}>
+                Hệ thống đang đối soát với ngân hàng. Vui lòng đợi trong giây lát...
+              </Text>
+              <View style={styles.checkTimerBox}>
+                <Ionicons name="time-outline" size={20} color="#2563EB" />
+                <Text style={styles.checkTimerText}>{formatTime(checkLeft)}</Text>
+              </View>
+              <View style={styles.checkInfoBox}>
+                <Text style={styles.checkInfoLabel}>Mã đơn</Text>
+                <Text style={styles.checkInfoValue}>{orderCode}</Text>
+              </View>
+              <View style={styles.checkInfoBox}>
+                <Text style={styles.checkInfoLabel}>Số tiền</Text>
+                <Text style={styles.checkInfoValue}>{booking.payNow.toLocaleString('vi-VN')}đ</Text>
+              </View>
+            </>
+          )}
+
+          {checkStatus === 'success' && (
+            <>
+              <View style={styles.successIcon}>
+                <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+              </View>
+              <Text style={styles.checkTitle}>Thanh toán thành công!</Text>
+              <Text style={styles.checkDesc}>
+                Đã nhận được {booking.payNow.toLocaleString('vi-VN')}đ cho đơn {orderCode}
+              </Text>
+              <Text style={styles.checkDescSmall}>
+                Đang kích hoạt khóa học...
+              </Text>
+              <ActivityIndicator color="#2563EB" style={{ marginTop: 16 }} />
+            </>
+          )}
+
+          {checkStatus === 'timeout' && (
+            <>
+              <View style={styles.timeoutIcon}>
+                <Ionicons name="hourglass-outline" size={64} color="#F59E0B" />
+              </View>
+              <Text style={styles.checkTitle}>Chờ admin xác nhận</Text>
+              <Text style={styles.checkDesc}>
+                Hệ thống chưa đối soát được giao dịch tự động. Bill bạn đã upload sẽ được admin
+                duyệt thủ công trong vòng 24h.
+              </Text>
+              <View style={styles.noteBoxSmall}>
+                <Ionicons name="information-circle-outline" size={18} color="#92400E" />
+                <Text style={styles.noteTextSmall}>
+                  Đơn {orderCode} đã được ghi nhận, bạn sẽ nhận thông báo khi admin xác nhận.
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ============ MÀN HÌNH CHÍNH ============
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
@@ -116,9 +236,7 @@ export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
           <View style={styles.expiredBox}>
             <Ionicons name="close-circle" size={64} color="#DC2626" />
             <Text style={styles.expiredTitle}>Đơn hàng hết hạn</Text>
-            <Text style={styles.expiredDesc}>
-              Vui lòng tạo đơn mới để tiếp tục đăng ký khóa học
-            </Text>
+            <Text style={styles.expiredDesc}>Vui lòng tạo đơn mới để tiếp tục</Text>
             <TouchableOpacity style={styles.renewBtn} onPress={handleRenew}>
               <Text style={styles.renewText}>Tạo đơn mới</Text>
             </TouchableOpacity>
@@ -130,7 +248,6 @@ export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
               <Text style={styles.noteText}>
                 Chuyển khoản <Text style={{ fontWeight: 'bold' }}>đúng số tiền</Text> và ghi{' '}
                 <Text style={{ fontWeight: 'bold' }}>đúng mã đơn {orderCode}</Text> vào nội dung.
-                Hệ thống sẽ tự xác nhận trong vài giây.
               </Text>
             </View>
 
@@ -235,7 +352,7 @@ export default function PaymentScreen({ tutor, booking, onBack, onSuccess }) {
                   </View>
                   <Text style={styles.uploadTitle}>Upload bill (dự phòng)</Text>
                   <Text style={styles.uploadDesc}>
-                    Nếu hệ thống không tự match được, admin sẽ duyệt từ bill này
+                    Nếu hệ thống không match được, admin duyệt từ bill này
                   </Text>
                 </>
               )}
@@ -369,4 +486,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB', paddingVertical: 16, borderRadius: 12,
   },
   confirmText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  // Màn hình check
+  checkContainer: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32,
+  },
+  checkTitle: { fontSize: 22, fontWeight: 'bold', color: '#111', marginTop: 24, textAlign: 'center' },
+  checkDesc: {
+    fontSize: 14, color: '#666', textAlign: 'center', marginTop: 12, lineHeight: 20,
+  },
+  checkDescSmall: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', marginTop: 8 },
+  checkTimerBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#EFF6FF', paddingHorizontal: 18, paddingVertical: 10,
+    borderRadius: 12, marginTop: 24,
+  },
+  checkTimerText: { fontSize: 18, fontWeight: 'bold', color: '#2563EB' },
+  checkInfoBox: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    width: '100%', backgroundColor: '#F9FAFB', borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 12, marginTop: 10,
+  },
+  checkInfoLabel: { fontSize: 13, color: '#9CA3AF' },
+  checkInfoValue: { fontSize: 15, fontWeight: '600', color: '#111' },
+  successIcon: {
+    width: 100, height: 100, borderRadius: 50, backgroundColor: '#DCFCE7',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+  },
+  timeoutIcon: {
+    width: 100, height: 100, borderRadius: 50, backgroundColor: '#FEF3C7',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+  },
+  noteBoxSmall: {
+    flexDirection: 'row', gap: 8, backgroundColor: '#FFFBEB',
+    borderRadius: 12, padding: 14, marginTop: 24,
+    borderWidth: 1, borderColor: '#FEF3C7', alignItems: 'flex-start',
+  },
+  noteTextSmall: { flex: 1, fontSize: 12, color: '#92400E', lineHeight: 18 },
 });

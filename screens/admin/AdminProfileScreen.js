@@ -2,15 +2,14 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ProfileScreen({ user, onLogout, onOpenAdmin }) {
-  const isAdmin = user?.role === 'admin';
-
+export default function AdminProfileScreen({ user, onLogout }) {
   const items = [
     { icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
-    { icon: 'card-outline', label: 'Phương thức thanh toán', color: '#10B981' },
-    { icon: 'lock-closed-outline', label: 'Bảo mật', color: '#8B5CF6' },
-    { icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#F59E0B' },
-    { icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
+    { icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
+    { icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
+    { icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#F59E0B' },
+    { icon: 'shield-outline', label: 'Bảo mật', color: '#EF4444' },
+    { icon: 'document-text-outline', label: 'Nhật ký hoạt động', color: '#6B7280' },
   ];
 
   return (
@@ -18,28 +17,15 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatarBox}>
-            <Ionicons name={isAdmin ? 'shield-checkmark' : 'person'} size={40} color={isAdmin ? '#7C3AED' : '#2563EB'} />
+            <Ionicons name="shield-checkmark" size={40} color="#7C3AED" />
           </View>
-          <Text style={styles.name}>{user?.full_name || user?.phone}</Text>
-          <Text style={styles.role}>{isAdmin ? 'Quản trị viên' : 'Khách hàng'}</Text>
+          <Text style={styles.name}>{user?.full_name || 'Admin'}</Text>
+          <Text style={styles.phone}>{user?.phone}</Text>
+          <View style={styles.roleBadge}>
+            <Ionicons name="shield-checkmark" size={12} color="#fff" />
+            <Text style={styles.roleText}>ADMIN</Text>
+          </View>
         </View>
-
-        {isAdmin && (
-          <TouchableOpacity
-            style={styles.adminBtn}
-            onPress={onOpenAdmin}
-            activeOpacity={0.8}
-          >
-            <View style={styles.adminBtnIcon}>
-              <Ionicons name="shield-checkmark" size={22} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.adminBtnTitle}>Trang quản trị</Text>
-              <Text style={styles.adminBtnDesc}>Quản lý người dùng, khóa học, thanh toán</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </TouchableOpacity>
-        )}
 
         <View style={styles.menu}>
           {items.map((item, idx) => (
@@ -71,24 +57,17 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   header: { alignItems: 'center', paddingVertical: 24 },
   avatarBox: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: '#EFF6FF',
+    width: 84, height: 84, borderRadius: 42, backgroundColor: '#F5F3FF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
   },
   name: { fontSize: 20, fontWeight: 'bold', color: '#111' },
-  role: { fontSize: 14, color: '#666', marginTop: 4 },
-  adminBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#7C3AED', borderRadius: 16, padding: 16, marginBottom: 16,
-    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
+  phone: { fontSize: 14, color: '#6B7280', marginTop: 4 },
+  roleBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 10, backgroundColor: '#7C3AED',
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
   },
-  adminBtnIcon: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  adminBtnTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
-  adminBtnDesc: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  roleText: { color: '#fff', fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 },
   menu: {
     backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },

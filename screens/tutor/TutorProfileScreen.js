@@ -2,15 +2,14 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ProfileScreen({ user, onLogout, onOpenAdmin }) {
-  const isAdmin = user?.role === 'admin';
-
+export default function TutorProfileScreen({ user, onLogout }) {
   const items = [
     { icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
-    { icon: 'card-outline', label: 'Phương thức thanh toán', color: '#10B981' },
-    { icon: 'lock-closed-outline', label: 'Bảo mật', color: '#8B5CF6' },
-    { icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#F59E0B' },
-    { icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
+    { icon: 'document-text-outline', label: 'Hồ sơ gia sư', color: '#8B5CF6' },
+    { icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#10B981' },
+    { icon: 'shield-checkmark-outline', label: 'Xác minh CCCD', color: '#F59E0B' },
+    { icon: 'star-outline', label: 'Đánh giá của học sinh', color: '#EC4899' },
+    { icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#6B7280' },
   ];
 
   return (
@@ -18,28 +17,20 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatarBox}>
-            <Ionicons name={isAdmin ? 'shield-checkmark' : 'person'} size={40} color={isAdmin ? '#7C3AED' : '#2563EB'} />
+            <Ionicons name="person" size={40} color="#2563EB" />
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark" size={12} color="#fff" />
+            </View>
           </View>
-          <Text style={styles.name}>{user?.full_name || user?.phone}</Text>
-          <Text style={styles.role}>{isAdmin ? 'Quản trị viên' : 'Khách hàng'}</Text>
-        </View>
+          <Text style={styles.name}>{user?.full_name || 'Gia sư'}</Text>
+          <Text style={styles.phone}>{user?.phone}</Text>
 
-        {isAdmin && (
-          <TouchableOpacity
-            style={styles.adminBtn}
-            onPress={onOpenAdmin}
-            activeOpacity={0.8}
-          >
-            <View style={styles.adminBtnIcon}>
-              <Ionicons name="shield-checkmark" size={22} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.adminBtnTitle}>Trang quản trị</Text>
-              <Text style={styles.adminBtnDesc}>Quản lý người dùng, khóa học, thanh toán</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </TouchableOpacity>
-        )}
+          <View style={styles.ratingBox}>
+            <Ionicons name="star" size={16} color="#F59E0B" />
+            <Text style={styles.ratingText}>4.9</Text>
+            <Text style={styles.ratingSub}>(128 đánh giá)</Text>
+          </View>
+        </View>
 
         <View style={styles.menu}>
           {items.map((item, idx) => (
@@ -71,24 +62,25 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   header: { alignItems: 'center', paddingVertical: 24 },
   avatarBox: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: '#EFF6FF',
+    width: 84, height: 84, borderRadius: 42, backgroundColor: '#EFF6FF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    position: 'relative',
+  },
+  verifiedBadge: {
+    position: 'absolute', bottom: 2, right: 2,
+    width: 22, height: 22, borderRadius: 11, backgroundColor: '#2563EB',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
   },
   name: { fontSize: 20, fontWeight: 'bold', color: '#111' },
-  role: { fontSize: 14, color: '#666', marginTop: 4 },
-  adminBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#7C3AED', borderRadius: 16, padding: 16, marginBottom: 16,
-    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
+  phone: { fontSize: 14, color: '#6B7280', marginTop: 4 },
+  ratingBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 10, paddingHorizontal: 14, paddingVertical: 6,
+    backgroundColor: '#FFFBEB', borderRadius: 20,
   },
-  adminBtnIcon: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  adminBtnTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
-  adminBtnDesc: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  ratingText: { fontSize: 15, fontWeight: 'bold', color: '#111' },
+  ratingSub: { fontSize: 12, color: '#9CA3AF' },
   menu: {
     backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
