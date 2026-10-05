@@ -1,8 +1,9 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { pickImage, takePhoto, uploadImage } from '../lib/upload';
 
 const BANK_INFO = {
   bankName: 'ACB - Ngân hàng Á Châu',
@@ -18,6 +19,9 @@ export default function PaymentScreen({ user, tutor, booking, onBack, onSuccess 
   const [timeLeft, setTimeLeft] = useState(PAYMENT_TIMEOUT);
   const [copied, setCopied] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [billUri, setBillUri] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     if (timeLeft <= 0) return;
@@ -39,12 +43,46 @@ export default function PaymentScreen({ user, tutor, booking, onBack, onSuccess 
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const handlePickFromLibrary = async () => {
+    setShowPicker(false);
+    const res = await pickImage();
+    if (res.cancelled) return;
+    if (res.error) return Alert.alert('Lỗi', res.error);
+    setBillUri(res.uri);
+  };
+
+  const handleTakePhoto = async () => {
+    setShowPicker(false);
+    const res = await takePhoto();
+    if (res.cancelled) return;
+    if (res.error) return Alert.alert('Lỗi', res.error);
+    setBillUri(res.uri);
+  };
+
   const handleConfirm = async () => {
     if (!user?.id) return Alert.alert('Lỗi', 'Bạn chưa đăng nhập');
+    if (!billUri) return Alert.alert('Lỗi', 'Vui lòng upload bill chuyển khoản');
+
     setSubmitting(true);
+    setUploading(true);
 
     try {
-      // 1. Tạo course
+      // 1. Upload ảnh bill
+      const uploadRes = await uploadImage({
+        uri: billUri,
+        bucket: 'bills',
+        folder: orderCode,
+      });
+
+      if (uploadRes.error) {
+        setSubmitting(false);
+        setUploading(false);
+        return Alert.alert('Lỗi upload', uploadRes.error);
+      }
+
+      setUploading(false);
+
+      // 2. Tạo course
       const { data: courseData, error: courseErr } = await supabase
         .from('courses')
         .insert({
@@ -65,7 +103,7 @@ export default function PaymentScreen({ user, tutor, booking, onBack, onSuccess 
 
       if (courseErr) throw courseErr;
 
-      // 2. Tạo order
+      // 3. Tạo order với bill URL
       const { error: orderErr } = await supabase
         .from('orders')
         .insert({
@@ -74,6 +112,7 @@ export default function PaymentScreen({ user, tutor, booking, onBack, onSuccess 
           course_id: courseData.id,
           amount: booking.payNow,
           status: 'pending',
+          bill_url: uploadRes.url,
         });
 
       if (orderErr) throw orderErr;
@@ -99,6 +138,7 @@ export default function PaymentScreen({ user, tutor, booking, onBack, onSuccess 
       );
     } catch (e) {
       setSubmitting(false);
+      setUploading(false);
       console.error('Create order error:', e);
       Alert.alert('Lỗi', e.message || 'Không thể tạo đơn hàng');
     }
@@ -239,27 +279,109 @@ export default function PaymentScreen({ user, tutor, booking, onBack, onSuccess 
           </TouchableOpacity>
         </View>
 
+        <Text style={styles.sectionTitle}>Upload bill chuyển khoản</Text>
+
+        {billUri ? (
+          <View style={styles.billPreviewBox}>
+            <Image source={{ uri: billUri }} style={styles.billImage} resizeMode="cover" />
+            <TouchableOpacity
+              style={styles.removeBillBtn}
+              onPress={() => setBillUri(null)}
+            >
+              <Ionicons name="close-circle" size={28} color="#EF4444" />
+            </TouchableOpacity>
+            <View style={styles.billSuccessBadge}>
+              <Ionicons name="checkmark-circle" size={16} color="#fff" />
+              <Text style={styles.billSuccessText}>Đã chọn bill</Text>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.uploadBox}
+            onPress={() => setShowPicker(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.uploadIcon}>
+              <Ionicons name="cloud-upload-outline" size={32} color="#2563EB" />
+            </View>
+            <Text style={styles.uploadTitle}>Chọn ảnh bill chuyển khoản</Text>
+            <Text style={styles.uploadDesc}>
+              Chụp ảnh hoặc chọn từ thư viện. Admin sẽ dùng bill này để xác nhận.
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <View style={{ height: 120 }} />
       </ScrollView>
 
       {!expired && (
         <View style={styles.bottomBar}>
           <TouchableOpacity
-            style={[styles.confirmBtn, submitting && { opacity: 0.7 }]}
+            style={[styles.confirmBtn, (submitting || !billUri) && { opacity: 0.6 }]}
             onPress={handleConfirm}
-            disabled={submitting}
+            disabled={submitting || !billUri}
           >
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
                 <Ionicons name="checkmark-done" size={20} color="#fff" />
-                <Text style={styles.confirmText}>Tôi đã chuyển khoản</Text>
+                <Text style={styles.confirmText}>
+                  {uploading ? 'Đang upload...' : 'Gửi xác nhận'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={showPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPicker(false)}
+        >
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Chọn ảnh bill</Text>
+
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={handleTakePhoto}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.modalIconBox, { backgroundColor: '#EFF6FF' }]}>
+                <Ionicons name="camera" size={22} color="#2563EB" />
+              </View>
+              <Text style={styles.modalOptionText}>Chụp ảnh mới</Text>
+              <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={handlePickFromLibrary}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.modalIconBox, { backgroundColor: '#F0FDF4' }]}>
+                <Ionicons name="images" size={22} color="#10B981" />
+              </View>
+              <Text style={styles.modalOptionText}>Chọn từ thư viện</Text>
+              <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setShowPicker(false)}
+            >
+              <Text style={styles.modalCancelText}>Huỷ</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -335,16 +457,69 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
   },
   copyText: { fontSize: 12, color: '#2563EB', fontWeight: '600' },
+  uploadBox: {
+    backgroundColor: '#fff', borderRadius: 16, paddingVertical: 32, paddingHorizontal: 20,
+    alignItems: 'center', borderWidth: 2, borderColor: '#E5E7EB', borderStyle: 'dashed',
+  },
+  uploadIcon: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: '#EFF6FF',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+  },
+  uploadTitle: { fontSize: 15, fontWeight: '600', color: '#111', marginBottom: 6 },
+  uploadDesc: {
+    fontSize: 12, color: '#9CA3AF', textAlign: 'center',
+    paddingHorizontal: 20, lineHeight: 18,
+  },
+  billPreviewBox: {
+    borderRadius: 16, overflow: 'hidden', position: 'relative',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 10, elevation: 3,
+  },
+  billImage: {
+    width: '100%', height: 220, backgroundColor: '#F3F4F6',
+  },
+  removeBillBtn: {
+    position: 'absolute', top: 8, right: 8,
+    backgroundColor: '#fff', borderRadius: 14,
+  },
+  billSuccessBadge: {
+    position: 'absolute', bottom: 8, left: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#10B981', paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 20,
+  },
+  billSuccessText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#fff', paddingHorizontal: 20, paddingVertical: 16,
     borderTopWidth: 1, borderTopColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 8,
   },
   confirmBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: '#2563EB', paddingVertical: 16, borderRadius: 12,
   },
   confirmText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 32,
+  },
+  modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#111', marginBottom: 16 },
+  modalOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, paddingHorizontal: 4,
+  },
+  modalIconBox: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalOptionText: { flex: 1, fontSize: 15, color: '#111', fontWeight: '500' },
+  modalCancel: {
+    marginTop: 12, paddingVertical: 14, alignItems: 'center',
+    backgroundColor: '#F3F4F6', borderRadius: 12,
+  },
+  modalCancelText: { fontSize: 15, color: '#6B7280', fontWeight: '600' },
 });

@@ -13,6 +13,7 @@ import PaymentScreen from './PaymentScreen';
 import CourseDetailScreen from './CourseDetailScreen';
 import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
+import MyTutorsScreen from './MyTutorsScreen';
 import AdminMainTabs from './AdminMainTabs';
 import EditProfileScreen from './profile/EditProfileScreen';
 import ChangePasswordScreen from './profile/ChangePasswordScreen';
@@ -68,6 +69,32 @@ export default function MainTabs({ user: initialUser, onLogout }) {
       sub.remove();
     };
   }, [user?.id]);
+
+  // My Tutors Screen
+  if (profileScreen === 'my-tutors') {
+    return (
+      <MyTutorsScreen
+        user={user}
+        onBack={() => setProfileScreen(null)}
+        onOpenChat={(conv) => { setProfileScreen(null); setActiveConv(conv); }}
+        onSelectTutor={(t) => {
+          setProfileScreen(null);
+          // Convert MyTutor format sang Tutor format cho TutorDetailScreen
+          setSelectedTutor({
+            id: t.id,
+            name: t.name,
+            avatar: t.avatar,
+            subject: t.subjects?.[0] || 'Chưa rõ',
+            experience: 'Đang dạy',
+            rating: 5.0,
+            reviews: 0,
+            price: t.price,
+            bio: '',
+          });
+        }}
+      />
+    );
+  }
 
   // Profile sub-screens
   if (profileScreen === 'edit-profile') {

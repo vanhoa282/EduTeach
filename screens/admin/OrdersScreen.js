@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, ActivityIndicator, Image, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -9,6 +9,7 @@ export default function OrdersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState(null);
+  const [billPreview, setBillPreview] = useState(null);
 
   const load = async () => {
     const res = await adminGetPendingOrders();
@@ -131,6 +132,25 @@ export default function OrdersScreen() {
                 </Text>
               </View>
 
+              {o.bill_url ? (
+                <TouchableOpacity
+                  style={styles.billThumbBox}
+                  onPress={() => setBillPreview(o.bill_url)}
+                  activeOpacity={0.8}
+                >
+                  <Image source={{ uri: o.bill_url }} style={styles.billThumb} resizeMode="cover" />
+                  <View style={styles.billThumbOverlay}>
+                    <Ionicons name="expand-outline" size={16} color="#fff" />
+                    <Text style={styles.billThumbText}>Xem bill</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.noBill}>
+                  <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
+                  <Text style={styles.noBillText}>Học sinh chưa upload bill</Text>
+                </View>
+              )}
+
               <View style={styles.actionsRow}>
                 <TouchableOpacity
                   style={[styles.btn, styles.rejectBtn]}
@@ -162,6 +182,29 @@ export default function OrdersScreen() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <Modal
+        visible={!!billPreview}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBillPreview(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalCloseBtn}
+            onPress={() => setBillPreview(null)}
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          {billPreview && (
+            <Image
+              source={{ uri: billPreview }}
+              style={styles.modalImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -189,6 +232,26 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 12 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   infoText: { fontSize: 13, color: '#6B7280' },
+  billThumbBox: {
+    marginTop: 10, borderRadius: 12, overflow: 'hidden',
+    position: 'relative', height: 140,
+  },
+  billThumb: {
+    width: '100%', height: '100%', backgroundColor: '#F3F4F6',
+  },
+  billThumbOverlay: {
+    position: 'absolute', bottom: 8, right: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+  },
+  billThumbText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  noBill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FFFBEB', borderRadius: 10, padding: 10, marginTop: 10,
+    borderWidth: 1, borderColor: '#FEF3C7',
+  },
+  noBillText: { fontSize: 12, color: '#92400E' },
   actionsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   btn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -197,4 +260,15 @@ const styles = StyleSheet.create({
   rejectBtn: { backgroundColor: '#FEF2F2' },
   approveBtn: { backgroundColor: '#10B981' },
   btnText: { fontSize: 13, fontWeight: '600' },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.95)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalCloseBtn: {
+    position: 'absolute', top: 40, right: 20,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center', zIndex: 10,
+  },
+  modalImage: { width: '100%', height: '80%' },
 });

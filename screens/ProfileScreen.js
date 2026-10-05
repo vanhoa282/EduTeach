@@ -4,8 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScreen }) {
   const isAdmin = user?.role === 'admin';
+  const isTutor = user?.role === 'tutor';
 
-  const items = [
+  // Menu cho học sinh
+  const studentItems = [
+    { key: 'my-tutors', icon: 'people-outline', label: 'Gia sư của tôi', color: '#EC4899' },
     { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
     { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#10B981' },
     { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#8B5CF6' },
@@ -13,27 +16,47 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScree
     { key: 'terms', icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
   ];
 
+  // Menu cho gia sư
+  const tutorItems = [
+    { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
+    { key: 'tutor-profile', icon: 'document-text-outline', label: 'Hồ sơ gia sư', color: '#8B5CF6' },
+    { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#10B981' },
+    { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#EF4444' },
+    { key: 'support', icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#F59E0B' },
+    { key: 'terms', icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
+  ];
+
+  // Menu cho admin
+  const adminItems = [
+    { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
+    { key: 'settings', icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
+    { key: 'commission', icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
+    { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#F59E0B' },
+    { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#EF4444' },
+    { key: 'support', icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#6B7280' },
+  ];
+
+  const items = isAdmin ? adminItems : isTutor ? tutorItems : studentItems;
+
   const handleItem = (key) => {
     if (onOpenScreen) onOpenScreen(key);
   };
+
+  const roleLabel = isAdmin ? 'Quản trị viên' : isTutor ? 'Gia sư' : 'Khách hàng';
+  const roleColor = isAdmin ? '#7C3AED' : isTutor ? '#8B5CF6' : '#2563EB';
+  const roleIcon = isAdmin ? 'shield-checkmark' : isTutor ? 'briefcase' : 'person';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <View style={styles.avatarBox}>
-            <Ionicons
-              name={isAdmin ? 'shield-checkmark' : 'person'}
-              size={40}
-              color={isAdmin ? '#7C3AED' : '#2563EB'}
-            />
+          <View style={[styles.avatarBox, { backgroundColor: roleColor + '15' }]}>
+            <Ionicons name={roleIcon} size={40} color={roleColor} />
           </View>
           <Text style={styles.name}>{user?.full_name || user?.phone}</Text>
           <Text style={styles.phone}>{user?.phone}</Text>
-          <View style={[styles.roleBadge, { backgroundColor: isAdmin ? '#F5F3FF' : '#EFF6FF' }]}>
-            <Text style={[styles.roleText, { color: isAdmin ? '#7C3AED' : '#2563EB' }]}>
-              {isAdmin ? 'Quản trị viên' : 'Khách hàng'}
-            </Text>
+          <View style={[styles.roleBadge, { backgroundColor: roleColor + '15' }]}>
+            <Text style={[styles.roleText, { color: roleColor }]}>{roleLabel}</Text>
           </View>
         </View>
 
@@ -85,7 +108,7 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   header: { alignItems: 'center', paddingVertical: 24 },
   avatarBox: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: '#EFF6FF',
+    width: 80, height: 80, borderRadius: 40,
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
   },
   name: { fontSize: 20, fontWeight: 'bold', color: '#111' },
