@@ -1,0 +1,52 @@
+export const categories = [
+  { id: '1', name: 'Toán', icon: 'calculator-outline', color: '#3B82F6', bg: '#EFF6FF' },
+  { id: '2', name: 'Văn', icon: 'book-outline', color: '#8B5CF6', bg: '#F5F3FF' },
+  { id: '3', name: 'Anh', icon: 'language-outline', color: '#EF4444', bg: '#FEF2F2' },
+  { id: '4', name: 'Lý', icon: 'nuclear-outline', color: '#06B6D4', bg: '#ECFEFF' },
+  { id: '5', name: 'Hóa', icon: 'flask-outline', color: '#10B981', bg: '#ECFDF5' },
+  { id: '6', name: 'Tin', icon: 'laptop-outline', color: '#F59E0B', bg: '#FFFBEB' },
+  { id: '7', name: 'Sinh', icon: 'leaf-outline', color: '#22C55E', bg: '#F0FDF4' },
+];
+
+export const tutors = [
+  {
+    id: '1',
+    name: 'Nguyễn Văn An',
+    subject: 'Toán 12',
+    experience: '5 năm',
+    rating: 4.9,
+    reviews: 128,
+    price: 200000,
+    avatar: 'https://i.pravatar.cc/150?img=12',
+  },
+  {
+    id: '2',
+    name: 'Trần Thị Bích',
+    subject: 'Anh Văn 10',
+    experience: '3 năm',
+    rating: 4.8,
+    reviews: 95,
+    price: 180000,
+    avatar: 'https://i.pravatar.cc/150?img=45',
+  },
+  {
+    id: '3',
+    name: 'Lê Minh Châu',
+    subject: 'Lý 11',
+    experience: '4 năm',
+    rating: 4.9,
+    reviews: 76,
+    price: 220000,
+    avatar: 'https://i.pravatar.cc/150?img=32',
+  },
+  {
+    id: '4',
+    name: 'Phạm Quốc Dũng',
+    subject: 'Hóa 12',
+    experience: '6 năm',
+    rating: 5.0,
+    reviews: 210,
+    price: 250000,
+    avatar: 'https://i.pravatar.cc/150?img=15',
+  },
+];

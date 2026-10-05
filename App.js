@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import MainTabs from './screens/MainTabs';
 
 export default function App() {
   const [screen, setScreen] = useState('splash');
@@ -30,10 +31,7 @@ export default function App() {
 
   if (screen === 'login') {
     return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
         <View style={styles.loginBox}>
           <Text style={styles.logoSmall}>📚</Text>
           <Text style={styles.title}>Đăng nhập</Text>
@@ -76,7 +74,7 @@ export default function App() {
                 }, 1000);
               } else {
                 if (otp === '123456') {
-                  setScreen('home');
+                  setScreen('main');
                 } else {
                   Alert.alert('Lỗi', 'OTP không đúng. Demo: 123456');
                 }
@@ -86,15 +84,11 @@ export default function App() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>
-                {otpSent ? 'Xác nhận OTP' : 'Gửi OTP'}
-              </Text>
+              <Text style={styles.buttonText}>{otpSent ? 'Xác nhận OTP' : 'Gửi OTP'}</Text>
             )}
           </TouchableOpacity>
 
-          <Text style={styles.note}>
-            Bằng việc đăng nhập, bạn đồng ý với Điều khoản & Chính sách
-          </Text>
+          <Text style={styles.note}>Bằng việc đăng nhập, bạn đồng ý với Điều khoản & Chính sách</Text>
         </View>
         <StatusBar style="dark" />
       </KeyboardAvoidingView>
@@ -102,65 +96,37 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Chào mừng đến EduTeach!</Text>
-      <Text style={styles.subtitle}>SĐT: {phone}</Text>
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => {
-          setScreen('login');
-          setOtpSent(false);
-          setOtp('');
-          setPhone('');
-        }}
-      >
-        <Text style={styles.buttonText}>Đăng xuất</Text>
-      </TouchableOpacity>
-      <StatusBar style="dark" />
-    </View>
+    <MainTabs
+      phone={phone}
+      onLogout={() => {
+        setScreen('login');
+        setOtpSent(false);
+        setOtp('');
+        setPhone('');
+      }}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  splashContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  splashContainer: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   logo: { fontSize: 80 },
   logoSmall: { fontSize: 50, marginBottom: 10 },
   appName: { fontSize: 32, fontWeight: 'bold', color: '#2563EB', marginTop: 10 },
   tagline: { fontSize: 14, color: '#666', marginTop: 5 },
   container: { flex: 1, backgroundColor: '#F9FAFB', justifyContent: 'center', padding: 20 },
   loginBox: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: '#fff', borderRadius: 16, padding: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
   },
   title: { fontSize: 24, fontWeight: 'bold', color: '#111', textAlign: 'center' },
   subtitle: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 8, marginBottom: 24 },
   input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    marginBottom: 12,
-    backgroundColor: '#F9FAFB',
+    borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12,
+    padding: 14, fontSize: 16, marginBottom: 12, backgroundColor: '#F9FAFB',
   },
-  button: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
+  button: { backgroundColor: '#2563EB', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 8 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   note: { fontSize: 12, color: '#999', textAlign: 'center', marginTop: 16, lineHeight: 18 },
 });
