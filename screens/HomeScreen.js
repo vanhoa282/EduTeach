@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image,
 import { Ionicons } from '@expo/vector-icons';
 import { tutors, categories } from '../data/tutors';
 
-export default function HomeScreen({ phone }) {
+export default function HomeScreen({ phone, onSelectTutor }) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -48,7 +48,12 @@ export default function HomeScreen({ phone }) {
           <Text style={styles.sectionMore}>Xem tất cả</Text>
         </View>
         {tutors.map(tutor => (
-          <TouchableOpacity key={tutor.id} style={styles.tutorCard} activeOpacity={0.7}>
+          <TouchableOpacity
+            key={tutor.id}
+            style={styles.tutorCard}
+            activeOpacity={0.7}
+            onPress={() => onSelectTutor && onSelectTutor(tutor)}
+          >
             <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
             <View style={styles.tutorInfo}>
               <Text style={styles.tutorName}>{tutor.name}</Text>
