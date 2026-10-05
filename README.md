@@ -9,6 +9,7 @@ App mobile ket noi hoc sinh va gia su. 3 role: student, tutor, admin.
 - @expo/vector-icons (Ionicons)
 - react-native-safe-area-context
 - AsyncStorage (persist session)
+- expo-image-picker + expo-file-system (upload bill)
 - EAS Build cho APK
 
 ## SUPABASE
@@ -16,6 +17,7 @@ App mobile ket noi hoc sinh va gia su. 3 role: student, tutor, admin.
 - anon key: sb_publishable_dvrXZVCmpFRnrAjMwTA53g_31nvYNCT
 - EAS projectId: dc90e3c4-6404-499c-9861-61f3b266d8b2
 - Owner: vanhoa282
+- Storage bucket: bills (public)
 
 ## TAI KHOAN TEST
 - Admin: 0325272884 (Ho Van Hoa)
@@ -26,66 +28,91 @@ App mobile ket noi hoc sinh va gia su. 3 role: student, tutor, admin.
 - Ngan hang: ACB - 25317541 - HO VAN HOA
 - Ma don: EDT + 6 so random
 - Countdown: 30 phut
-- Admin duyet tay tu bill upload
+- Upload bill that len Supabase Storage
+- Admin duyet tu bill
 
 ## CAU TRUC THU MUC
 - App.js: entry, phan nhanh role
 - app.json: Expo config + EAS
-- lib/: supabase.js, auth.js, chat.js, wallet.js, notif.js, notifications.js, sound.js
-- components/: BottomNav.js (HS 5 tab), TutorBottomNav.js (tutor 6 tab), AdminBottomNav.js (admin 4 tab)
-- screens/: AuthScreen, MainTabs, TutorMainTabs, AdminMainTabs, HomeScreen, AllTutorsScreen, TutorDetailScreen, BookingScreen, PaymentScreen, CoursesScreen, CourseDetailScreen, NotificationsScreen, NotificationDetailScreen, ProfileScreen
-- screens/chat/: ChatListScreen, ChatDetailScreen
-- screens/tutor/: ScheduleScreen, StudentsScreen, WalletScreen, WithdrawScreen, TutorProfileScreen
-- screens/admin/: DashboardScreen, OrdersScreen, WithdrawsScreen, UsersScreen, AdminProfileScreen
+- lib/
+  - supabase.js: client
+  - auth.js: auth + admin + profile helpers
+  - chat.js: conversations + messages
+  - wallet.js: vi + rut tien + cong tien
+  - notif.js: he thong thong bao
+  - notifications.js: push (chi APK)
+  - sound.js: am thanh
+  - upload.js: chon/chup/upload anh
+  - reviews.js: lay danh gia gia su
+  - myTutors.js: lay gia su cua HS
+  - pollUnread.js: poll du phong
+- components/
+  - BottomNav.js: nav HS (5 tab)
+  - TutorBottomNav.js: nav tutor (6 tab)
+  - AdminBottomNav.js: nav admin (4 tab)
+- screens/
+  - AuthScreen, MainTabs, TutorMainTabs, AdminMainTabs
+  - HomeScreen, AllTutorsScreen, TutorDetailScreen
+  - BookingScreen, PaymentScreen, CoursesScreen, CourseDetailScreen
+  - NotificationsScreen, NotificationDetailScreen
+  - ProfileScreen, MyTutorsScreen
+  - chat/ChatListScreen, chat/ChatDetailScreen
+  - profile/EditProfileScreen, ChangePasswordScreen, BankScreen, SupportScreen, TermsScreen
+  - tutor/ScheduleScreen, StudentsScreen, StudentDetailScreen, WalletScreen, WithdrawScreen, TutorProfileScreen
+  - admin/DashboardScreen, OrdersScreen, WithdrawsScreen, UsersScreen, AdminProfileScreen
 
 ## DATABASE TABLES
 1. users: id, phone, password, role, full_name, avatar_url, status, push_token
-2. tutor_profiles: user_id, bio, subjects[], price_per_session, rating_avg, rating_count, experience_years, cccd_*, contract_*, verify_status
+2. tutor_profiles: user_id, bio, subjects[], price_per_session, rating_avg, rating_count, experience_years, cccd_*, contract_*, bank_*, verify_status
 3. courses: id, student_id, tutor_id, subject, total_sessions, price_per_session, total_price, payment_type, paid_amount, commission_rate, status, schedule
 4. sessions: id, course_id, session_number, scheduled_at, status, customer_confirmed_at, tutor_payout, app_fee
 5. session_reviews: id, session_id, rating (1-5), comment
 6. wallets: user_id, balance_available, balance_pending
 7. transactions: id, user_id, type, amount, status, ref_id, note
-8. withdraw_requests: id, user_id, amount, bank_name, bank_account, bank_holder, status, note
-9. orders: id, order_code, student_id, course_id, amount, status, expires_at
+8. withdraw_requests: id, user_id, amount, bank_*, status, note
+9. orders: id, order_code, student_id, course_id, amount, status, bill_url, expires_at
 10. disputes: id, session_id, raised_by, reason, evidence_urls[], status
-11. settings: key, value (commission_rate=10, min_withdraw=50000)
+11. settings: key, value
 12. conversations: id, student_id, tutor_id, last_message, last_message_at
 13. messages: id, conversation_id, sender_id, content, read_at
 14. notifications: id, user_id, title, body, type, ref_id, read_at
 
-Realtime bat cho: messages, conversations, notifications
+Realtime bat: messages, conversations, notifications
 
 ## DA LAM
 ### He thong
 - DB 14 bang + RLS + seed
 - Auth Login/Signup 2 tab
-- Phan nhanh role trong App.js
-- Persist session (AsyncStorage auto-login)
-- Realtime cho messages + notifications
-- Sound trong app khi co tin nhan
+- Persist session (auto-login)
+- Realtime chat + notifications
+- Sound trong app khi co tin
+- He thong thong bao (badge + chi tiet)
+- Upload bill that len Supabase Storage
 
 ### Hoc sinh (5 tab: Trang chu, Khoa hoc, Thong bao, Tin nhan, Tai khoan)
 - Home: list gia su + filter danh muc + search
 - AllTutors: sort + filter + search
-- Chi tiet gia su + nut Nhan tin
+- Chi tiet gia su: info + danh gia co thong ke (bar chart, filter 5/4/3/2/1 sao) + nut chat
 - Booking: chon buoi + lich + PTTT 100/50
-- Payment: STK ACB + ma EDT + countdown
+- Payment: STK ACB + ma EDT + countdown + upload bill that
 - Khoa hoc: list tu Supabase
 - Chi tiet khoa: sessions + xac nhan + danh gia 1-5 sao + khieu nai
 - Chat realtime + optimistic update
 - Thong bao + chi tiet thong bao
+- MyTutors: danh sach gia su dang hoc
+- Profile: edit thong tin, doi mat khau, luu STK, ho tro, dieu khoan
 
 ### Gia su (6 tab: Lich day, Hoc sinh, Tin nhan, Thong bao, Vi, Tai khoan)
-- Lich day: stats + list sessions
-- Hoc sinh: list + nut Nhan tin tung HS (co badge)
+- Lich day: stats + list sessions tu DB
+- Hoc sinh: list + nut Nhan tin + Chi tiet
+- StudentDetail: profile HS + stats + list khoa + sessions
 - Vi: so du + pending + tab Rut tien
 - Withdraw: form rut tien
-- Profile
+- Profile: edit thong tin, doi mat khau, luu STK
 
 ### Admin (4 tab: Tong quan, Don hang, Rut tien, Users)
 - Dashboard: stats that
-- Duyet don: tao sessions tu dong + thong bao
+- Duyet don: xem bill + duyet/tu choi + tao sessions tu dong + thong bao
 - Duyet rut: tru vi + thong bao
 - Users: doi role, khoa/mo
 
@@ -106,22 +133,20 @@ Realtime bat cho: messages, conversations, notifications
 
 ## CON LAI
 ### Uu tien cao
-- Push notification that khi tat app (da setup code, can build APK moi)
-- Trang chi tiet hoc sinh tu goc nhin gia su
-- Dem buoi chinh xac
-- Filter nang cao (gia, kinh nghiem)
+- Push notification that khi tat app (da co code, can build APK moi)
+- Dem buoi con lai chinh xac (tru sessions da hoc)
+- Filter nang cao (gia, kinh nghiem, gioi tinh)
 
 ### Trung binh
-- Upload bill that (Supabase Storage)
-- Tu dong chuyen pending sang available sau 7 ngay
-- Trang xem danh gia gia su tong hop
+- Tu dong chuyen pending sang available sau 7 ngay (cron)
+- Trang xem danh gia gia su tong hop cho admin
 - Thong bao buoi hoc sap toi
 
 ### Thap
 - Hash password bcrypt
 - eKYC CCCD
 - Doi icon + splash
-- Thong ke admin nang cao
+- Thong ke admin nang cao (bieu do doanh thu)
 
 ## QUY UOC CODE
 - Mau: 2563EB (HS + tutor), 7C3AED (admin)
@@ -130,7 +155,7 @@ Realtime bat cho: messages, conversations, notifications
 - UI tieng Viet
 - Gia: toLocaleString('vi-VN')
 - Tao file: cat > file.js << 'EOF' ... EOF (gui full, khong keu user tim thay)
-- Tat ca placeholder value trong file .js dung dau ngoac don, KHONG dung backtick
+- Tat ca placeholder value trong file .js dung dau ngoac don, KHONG dung backtick trong heredoc
 
 ## QUY TRINH
 1. Termux session 1: cd ~/projects/EduTeach && npx expo start
@@ -152,6 +177,7 @@ Realtime bat cho: messages, conversations, notifications
 - Nhac user KHONG bam Ctrl+C khi dang paste heredoc
 - Tao folder moi: mkdir -p truoc
 - Push notification chi hoat dong o APK, KHONG hoat dong trong Expo Go
+- Khi dung heredoc, TRANH dung backtick trong code JS (gay loi)
 
 ## LINKS
 - GitHub: https://github.com/vanhoa282/EduTeach
@@ -160,5 +186,5 @@ Realtime bat cho: messages, conversations, notifications
 
 ## VERSION
 Last update: 2026-10-05
-Version: MVP 0.8
+Version: MVP 0.9
 
