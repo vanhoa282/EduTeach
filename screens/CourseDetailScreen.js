@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { payTutorForSession } from '../lib/wallet';
+import { createNotification } from '../lib/notif';
 
 const STATUS_CFG = {
   pending_payment: { label: 'Chờ thanh toán', color: '#F59E0B', bg: '#FFFBEB' },
@@ -103,6 +104,18 @@ export default function CourseDetailScreen({ courseId, onBack }) {
 
     if (error) return Alert.alert('Lỗi', error.message);
 
+    // ✅ THÔNG BÁO CHO GIA SƯ
+    if (course?.tutor?.id) {
+      const stars = '⭐'.repeat(reviewRating);
+      await createNotification({
+        userId: course.tutor.id,
+        title: `${stars} Học sinh đã đánh giá buổi học`,
+        body: `Buổi ${reviewModal.session_number} môn ${course.subject}: ${reviewRating}/5 sao${reviewComment.trim() ? ` - "${reviewComment.trim().substring(0, 60)}"` : ''}`,
+        type: 'session',
+        refId: reviewModal.id,
+      });
+    }
+
     setReviewModal(null);
     Alert.alert('Cảm ơn!', 'Đánh giá của bạn đã được ghi nhận.');
   };
@@ -122,6 +135,22 @@ export default function CourseDetailScreen({ courseId, onBack }) {
               .update({ status: 'disputed' })
               .eq('id', session.id);
             if (error) return Alert.alert('Lỗi', error.message);
+
+            // Thông báo cho admin
+            const { data: admins } = await supabase
+              .from('users').select('id').eq('role', 'admin');
+            if (admins) {
+              for (const a of admins) {
+                await createNotification({
+                  userId: a.id,
+                  title: '⚠️ Có khiếu nại mới',
+                  body: `Học sinh khiếu nại buổi ${session.session_number} môn ${course.subject}.`,
+                  type: 'session',
+                  refId: session.id,
+                });
+              }
+            }
+
             Alert.alert('Đã gửi', 'Admin sẽ liên hệ bạn trong 24h.');
             load();
           },

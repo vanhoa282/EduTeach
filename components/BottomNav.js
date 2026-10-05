@@ -4,16 +4,19 @@ import { Ionicons } from '@expo/vector-icons';
 const TABS = [
   { key: 'home', label: 'Trang chủ', icon: 'home', iconOutline: 'home-outline' },
   { key: 'courses', label: 'Khóa học', icon: 'book', iconOutline: 'book-outline' },
-  { key: 'notifications', label: 'Tin nhắn', icon: 'chatbubbles', iconOutline: 'chatbubbles-outline' },
+  { key: 'notifications', label: 'Thông báo', icon: 'notifications', iconOutline: 'notifications-outline' },
+  { key: 'messages', label: 'Tin nhắn', icon: 'chatbubbles', iconOutline: 'chatbubbles-outline' },
   { key: 'profile', label: 'Tài khoản', icon: 'person', iconOutline: 'person-outline' },
 ];
 
-export default function BottomNav({ activeTab, onChange, unreadCount = 0 }) {
+export default function BottomNav({ activeTab, onChange, unreadMsgs = 0, unreadNotifs = 0 }) {
+  const badges = { messages: unreadMsgs, notifications: unreadNotifs };
+
   return (
     <View style={styles.nav}>
       {TABS.map(tab => {
         const active = tab.key === activeTab;
-        const showBadge = tab.key === 'notifications' && unreadCount > 0;
+        const count = badges[tab.key] || 0;
         return (
           <TouchableOpacity
             key={tab.key}
@@ -24,14 +27,12 @@ export default function BottomNav({ activeTab, onChange, unreadCount = 0 }) {
             <View>
               <Ionicons
                 name={active ? tab.icon : tab.iconOutline}
-                size={24}
+                size={22}
                 color={active ? '#2563EB' : '#9CA3AF'}
               />
-              {showBadge && (
+              {count > 0 && (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
+                  <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
                 </View>
               )}
             </View>
@@ -52,7 +53,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05, shadowRadius: 8, elevation: 8,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
-  label: { fontSize: 11, color: '#9CA3AF', marginTop: 4, fontWeight: '500' },
+  label: { fontSize: 10, color: '#9CA3AF', marginTop: 4, fontWeight: '500' },
   labelActive: { color: '#2563EB', fontWeight: '700' },
   badge: {
     position: 'absolute', top: -6, right: -10,

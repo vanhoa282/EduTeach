@@ -5,20 +5,22 @@ import { useState, useEffect } from 'react';
 import { getTutors } from '../lib/auth';
 
 const categories = [
-  { id: '1', name: 'Toán', icon: 'calculator-outline', color: '#3B82F6', bg: '#EFF6FF' },
-  { id: '2', name: 'Văn', icon: 'book-outline', color: '#8B5CF6', bg: '#F5F3FF' },
-  { id: '3', name: 'Anh', icon: 'language-outline', color: '#EF4444', bg: '#FEF2F2' },
-  { id: '4', name: 'Lý', icon: 'nuclear-outline', color: '#06B6D4', bg: '#ECFEFF' },
-  { id: '5', name: 'Hóa', icon: 'flask-outline', color: '#10B981', bg: '#ECFDF5' },
-  { id: '6', name: 'Tin', icon: 'laptop-outline', color: '#F59E0B', bg: '#FFFBEB' },
-  { id: '7', name: 'Sinh', icon: 'leaf-outline', color: '#22C55E', bg: '#F0FDF4' },
+  { id: 'all', name: 'Tất cả', icon: 'apps-outline', color: '#6B7280', bg: '#F3F4F6' },
+  { id: 'Toán', name: 'Toán', icon: 'calculator-outline', color: '#3B82F6', bg: '#EFF6FF' },
+  { id: 'Văn', name: 'Văn', icon: 'book-outline', color: '#8B5CF6', bg: '#F5F3FF' },
+  { id: 'Anh', name: 'Anh', icon: 'language-outline', color: '#EF4444', bg: '#FEF2F2' },
+  { id: 'Lý', name: 'Lý', icon: 'nuclear-outline', color: '#06B6D4', bg: '#ECFEFF' },
+  { id: 'Hóa', name: 'Hóa', icon: 'flask-outline', color: '#10B981', bg: '#ECFDF5' },
+  { id: 'Tin', name: 'Tin', icon: 'laptop-outline', color: '#F59E0B', bg: '#FFFBEB' },
+  { id: 'Sinh', name: 'Sinh', icon: 'leaf-outline', color: '#22C55E', bg: '#F0FDF4' },
 ];
 
-export default function HomeScreen({ user, onSelectTutor }) {
+export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeCat, setActiveCat] = useState('all');
 
   const load = async () => {
     const data = await getTutors();
@@ -35,13 +37,31 @@ export default function HomeScreen({ user, onSelectTutor }) {
   };
 
   const filteredTutors = tutors.filter(t => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      (t.name || '').toLowerCase().includes(q) ||
-      (t.subject || '').toLowerCase().includes(q)
-    );
+    // Lọc theo category
+    if (activeCat !== 'all') {
+      const inCat = (t.subject || '').toLowerCase().includes(activeCat.toLowerCase());
+      if (!inCat) return false;
+    }
+    // Lọc theo search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return (
+        (t.name || '').toLowerCase().includes(q) ||
+        (t.subject || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
   });
+
+  const handleCatPress = (catId) => {
+    setActiveCat(catId);
+  };
+
+  const handleSeeAll = () => {
+    if (onOpenAllTutors) {
+      onOpenAllTutors({ category: activeCat, search });
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -55,8 +75,8 @@ export default function HomeScreen({ user, onSelectTutor }) {
             <Text style={styles.greeting}>Xin chào 👋</Text>
             <Text style={styles.phone}>{user?.full_name || user?.phone || 'bạn'}</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn}>
-            <Ionicons name="notifications-outline" size={22} color="#111" />
+          <TouchableOpacity style={styles.bellBtn} onPress={handleSeeAll}>
+            <Ionicons name="search" size={22} color="#111" />
           </TouchableOpacity>
         </View>
 
@@ -70,32 +90,61 @@ export default function HomeScreen({ user, onSelectTutor }) {
             placeholderTextColor="#9CA3AF"
             value={search}
             onChangeText={setSearch}
+            onSubmitEditing={handleSeeAll}
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
               <Ionicons name="close-circle" size={20} color="#9CA3AF" />
             </TouchableOpacity>
           )}
+          <TouchableOpacity onPress={handleSeeAll}>
+            <Ionicons name="options-outline" size={20} color="#2563EB" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Danh mục</Text>
-          <Text style={styles.sectionMore}>Xem tất cả</Text>
+          <TouchableOpacity onPress={() => setActiveCat('all')}>
+            <Text style={styles.sectionMore}>Bỏ lọc</Text>
+          </TouchableOpacity>
         </View>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesContent}>
-          {categories.map(cat => (
-            <TouchableOpacity key={cat.id} style={styles.categoryCard}>
-              <View style={[styles.categoryIconBox, { backgroundColor: cat.bg }]}>
-                <Ionicons name={cat.icon} size={26} color={cat.color} />
-              </View>
-              <Text style={styles.categoryName}>{cat.name}</Text>
-            </TouchableOpacity>
-          ))}
+          {categories.map(cat => {
+            const active = cat.id === activeCat;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.categoryCard}
+                onPress={() => handleCatPress(cat.id)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.categoryIconBox,
+                    { backgroundColor: cat.bg },
+                    active && { borderWidth: 2, borderColor: cat.color },
+                  ]}
+                >
+                  <Ionicons name={cat.icon} size={26} color={cat.color} />
+                </View>
+                <Text
+                  style={[styles.categoryName, active && { color: cat.color, fontWeight: 'bold' }]}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Gia sư nổi bật</Text>
-          <Text style={styles.sectionMore}>{filteredTutors.length} gia sư</Text>
+          <Text style={styles.sectionTitle}>
+            {activeCat === 'all' ? 'Gia sư nổi bật' : `Gia sư ${activeCat}`}
+          </Text>
+          <TouchableOpacity onPress={handleSeeAll}>
+            <Text style={styles.sectionMore}>Xem tất cả</Text>
+          </TouchableOpacity>
         </View>
 
         {loading ? (
@@ -107,10 +156,22 @@ export default function HomeScreen({ user, onSelectTutor }) {
           <View style={styles.emptyBox}>
             <Ionicons name="search-outline" size={48} color="#D1D5DB" />
             <Text style={styles.emptyTitle}>Không tìm thấy gia sư</Text>
-            <Text style={styles.emptyDesc}>Thử tìm với từ khoá khác</Text>
+            <Text style={styles.emptyDesc}>
+              {activeCat !== 'all'
+                ? `Chưa có gia sư dạy môn ${activeCat}`
+                : 'Thử tìm với từ khoá khác'}
+            </Text>
+            {activeCat !== 'all' && (
+              <TouchableOpacity
+                style={styles.clearFilterBtn}
+                onPress={() => setActiveCat('all')}
+              >
+                <Text style={styles.clearFilterText}>Bỏ lọc danh mục</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
-          filteredTutors.map(tutor => (
+          filteredTutors.slice(0, 5).map(tutor => (
             <TouchableOpacity
               key={tutor.id}
               style={styles.tutorCard}
@@ -119,8 +180,10 @@ export default function HomeScreen({ user, onSelectTutor }) {
             >
               <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
               <View style={styles.tutorInfo}>
-                <Text style={styles.tutorName}>{tutor.name}</Text>
-                <Text style={styles.tutorSubject}>{tutor.subject} · {tutor.experience}</Text>
+                <Text style={styles.tutorName} numberOfLines={1}>{tutor.name}</Text>
+                <Text style={styles.tutorSubject} numberOfLines={1}>
+                  {tutor.subject} · {tutor.experience}
+                </Text>
                 <View style={styles.tutorMeta}>
                   <Ionicons name="star" size={13} color="#F59E0B" />
                   <Text style={styles.tutorRating}> {tutor.rating}</Text>
@@ -133,6 +196,13 @@ export default function HomeScreen({ user, onSelectTutor }) {
               </View>
             </TouchableOpacity>
           ))
+        )}
+
+        {filteredTutors.length > 5 && (
+          <TouchableOpacity style={styles.seeMoreBtn} onPress={handleSeeAll}>
+            <Text style={styles.seeMoreText}>Xem thêm {filteredTutors.length - 5} gia sư</Text>
+            <Ionicons name="arrow-forward" size={16} color="#2563EB" />
+          </TouchableOpacity>
         )}
 
         <View style={{ height: 20 }} />
@@ -175,7 +245,12 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 13, color: '#9CA3AF', marginTop: 12 },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginTop: 12 },
-  emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
+  emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4, textAlign: 'center' },
+  clearFilterBtn: {
+    marginTop: 16, paddingHorizontal: 20, paddingVertical: 10,
+    backgroundColor: '#EFF6FF', borderRadius: 20,
+  },
+  clearFilterText: { fontSize: 13, color: '#2563EB', fontWeight: '600' },
   tutorCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
     borderRadius: 16, padding: 12, marginBottom: 12,
@@ -192,4 +267,10 @@ const styles = StyleSheet.create({
   tutorPriceBox: { alignItems: 'flex-end' },
   tutorPrice: { fontSize: 18, fontWeight: 'bold', color: '#2563EB' },
   tutorPriceUnit: { fontSize: 11, color: '#9CA3AF' },
+  seeMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 14, backgroundColor: '#EFF6FF', borderRadius: 12,
+    marginTop: 4,
+  },
+  seeMoreText: { fontSize: 14, color: '#2563EB', fontWeight: '600' },
 });

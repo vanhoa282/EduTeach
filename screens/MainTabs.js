@@ -2,7 +2,10 @@ import { View, StyleSheet, AppState } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import BottomNav from '../components/BottomNav';
 import HomeScreen from './HomeScreen';
+import AllTutorsScreen from './AllTutorsScreen';
 import CoursesScreen from './CoursesScreen';
+import NotificationsScreen from './NotificationsScreen';
+import NotificationDetailScreen from './NotificationDetailScreen';
 import ProfileScreen from './ProfileScreen';
 import TutorDetailScreen from './TutorDetailScreen';
 import BookingScreen from './BookingScreen';
@@ -12,6 +15,7 @@ import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
 import AdminMainTabs from './AdminMainTabs';
 import { getOrCreateConversation, getUnreadCount } from '../lib/chat';
+import { getNotifUnreadCount } from '../lib/notif';
 import { supabase } from '../lib/supabase';
 
 export default function MainTabs({ user, onLogout }) {
@@ -20,52 +24,37 @@ export default function MainTabs({ user, onLogout }) {
   const [bookingTutor, setBookingTutor] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [selectedCourseId, setSelectedCourseId] = useState(null);
+  const [selectedNotif, setSelectedNotif] = useState(null);
+  const [allTutorsFilter, setAllTutorsFilter] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeConv, setActiveConv] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const appState = useRef(AppState.currentState);
 
-  // Load unread count
-  const loadUnread = async () => {
+  const loadCounts = async () => {
     if (!user?.id) return;
-    const count = await getUnreadCount(user.id);
-    setUnreadCount(count);
+    const [m, n] = await Promise.all([
+      getUnreadCount(user.id),
+      getNotifUnreadCount(user.id),
+    ]);
+    setUnreadMsgs(m);
+    setUnreadNotifs(n);
   };
 
   useEffect(() => {
-    loadUnread();
-
-    // Realtime subscribe to messages → update unread count
+    loadCounts();
     const channel = supabase
-      .channel('main-unread-' + user?.id)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-      }, () => {
-        loadUnread();
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages',
-      }, () => {
-        loadUnread();
-      })
+      .channel('main-counts-' + user?.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadCounts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadCounts)
       .subscribe();
-
-    // Poll mỗi 30s dự phòng
-    const poll = setInterval(loadUnread, 30000);
-
-    // Khi app quay lại foreground → refresh
-    const sub = AppState.addEventListener('change', (nextState) => {
-      if (appState.current.match(/inactive|background/) && nextState === 'active') {
-        loadUnread();
-      }
-      appState.current = nextState;
+    const poll = setInterval(loadCounts, 30000);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (appState.current.match(/inactive|background/) && s === 'active') loadCounts();
+      appState.current = s;
     });
-
     return () => {
       supabase.removeChannel(channel);
       clearInterval(poll);
@@ -73,9 +62,8 @@ export default function MainTabs({ user, onLogout }) {
     };
   }, [user?.id]);
 
-  // Refresh unread khi đóng chat hoặc đổi tab
   useEffect(() => {
-    if (!activeConv) loadUnread();
+    if (!activeConv) loadCounts();
   }, [activeConv, activeTab]);
 
   if (showAdmin && user?.role === 'admin') {
@@ -87,7 +75,37 @@ export default function MainTabs({ user, onLogout }) {
       <ChatDetailScreen
         user={user}
         conversation={activeConv}
-        onBack={() => { setActiveConv(null); loadUnread(); }}
+        onBack={() => { setActiveConv(null); loadCounts(); }}
+      />
+    );
+  }
+
+  if (selectedNotif) {
+    return (
+      <NotificationDetailScreen
+        notification={selectedNotif}
+        onBack={() => { setSelectedNotif(null); loadCounts(); }}
+        onAction={(action) => {
+          setSelectedNotif(null);
+          if (action.screen === 'courses') setActiveTab('courses');
+          else if (action.screen === 'wallet') setActiveTab('profile');
+          loadCounts();
+        }}
+      />
+    );
+  }
+
+  if (allTutorsFilter) {
+    return (
+      <AllTutorsScreen
+        user={user}
+        initialCategory={allTutorsFilter.category}
+        initialSearch={allTutorsFilter.search}
+        onBack={() => setAllTutorsFilter(null)}
+        onSelectTutor={(t) => {
+          setAllTutorsFilter(null);
+          setSelectedTutor(t);
+        }}
       />
     );
   }
@@ -151,7 +169,13 @@ export default function MainTabs({ user, onLogout }) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {activeTab === 'home' && <HomeScreen user={user} onSelectTutor={setSelectedTutor} />}
+        {activeTab === 'home' && (
+          <HomeScreen
+            user={user}
+            onSelectTutor={setSelectedTutor}
+            onOpenAllTutors={setAllTutorsFilter}
+          />
+        )}
         {activeTab === 'courses' && (
           <CoursesScreen
             key={refreshKey}
@@ -160,7 +184,14 @@ export default function MainTabs({ user, onLogout }) {
             onSelectCourse={setSelectedCourseId}
           />
         )}
-        {activeTab === 'notifications' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
+        {activeTab === 'notifications' && (
+          <NotificationsScreen
+            user={user}
+            onRefresh={loadCounts}
+            onOpenNotif={setSelectedNotif}
+          />
+        )}
+        {activeTab === 'messages' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
         {activeTab === 'profile' && (
           <ProfileScreen
             user={user}
@@ -169,7 +200,12 @@ export default function MainTabs({ user, onLogout }) {
           />
         )}
       </View>
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} unreadCount={unreadCount} />
+      <BottomNav
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        unreadMsgs={unreadMsgs}
+        unreadNotifs={unreadNotifs}
+      />
     </View>
   );
 }

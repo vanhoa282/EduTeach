@@ -4,17 +4,17 @@ import { Ionicons } from '@expo/vector-icons';
 const TABS = [
   { key: 'schedule', label: 'Lịch dạy', icon: 'calendar', iconOutline: 'calendar-outline' },
   { key: 'students', label: 'Học sinh', icon: 'people', iconOutline: 'people-outline' },
-  { key: 'messages', label: 'Tin nhắn', icon: 'chatbubbles', iconOutline: 'chatbubbles-outline' },
+  { key: 'notifications', label: 'Thông báo', icon: 'notifications', iconOutline: 'notifications-outline' },
   { key: 'wallet', label: 'Ví', icon: 'wallet', iconOutline: 'wallet-outline' },
   { key: 'profile', label: 'Tài khoản', icon: 'person', iconOutline: 'person-outline' },
 ];
 
-export default function TutorBottomNav({ activeTab, onChange, unreadCount = 0 }) {
+export default function TutorBottomNav({ activeTab, onChange, unreadNotifs = 0 }) {
   return (
     <View style={styles.nav}>
       {TABS.map(tab => {
         const active = tab.key === activeTab;
-        const showBadge = tab.key === 'messages' && unreadCount > 0;
+        const showBadge = tab.key === 'notifications' && unreadNotifs > 0;
         return (
           <TouchableOpacity
             key={tab.key}
@@ -31,7 +31,7 @@ export default function TutorBottomNav({ activeTab, onChange, unreadCount = 0 })
               {showBadge && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
+                    {unreadNotifs > 99 ? '99+' : unreadNotifs}
                   </Text>
                 </View>
               )}

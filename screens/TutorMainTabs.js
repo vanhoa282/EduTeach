@@ -6,9 +6,12 @@ import StudentsScreen from './tutor/StudentsScreen';
 import WalletScreen from './tutor/WalletScreen';
 import WithdrawScreen from './tutor/WithdrawScreen';
 import TutorProfileScreen from './tutor/TutorProfileScreen';
+import NotificationsScreen from './NotificationsScreen';
+import NotificationDetailScreen from './NotificationDetailScreen';
 import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
 import { getWallet } from '../lib/wallet';
+import { getNotifUnreadCount } from '../lib/notif';
 import { getUnreadCount } from '../lib/chat';
 import { supabase } from '../lib/supabase';
 
@@ -17,8 +20,10 @@ export default function TutorMainTabs({ user, onLogout }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [balance, setBalance] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [selectedNotif, setSelectedNotif] = useState(null);
   const [activeConv, setActiveConv] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
   const appState = useRef(AppState.currentState);
 
   const loadBalance = async () => {
@@ -27,29 +32,31 @@ export default function TutorMainTabs({ user, onLogout }) {
     setBalance(wallet?.balance_available || 0);
   };
 
-  const loadUnread = async () => {
+  const loadCounts = async () => {
     if (!user?.id) return;
-    const count = await getUnreadCount(user.id);
-    setUnreadCount(count);
+    const [m, n] = await Promise.all([
+      getUnreadCount(user.id),
+      getNotifUnreadCount(user.id),
+    ]);
+    setUnreadMsgs(m);
+    setUnreadNotifs(n);
   };
 
   useEffect(() => {
     loadBalance();
-    loadUnread();
+    loadCounts();
 
     const channel = supabase
-      .channel('tutor-unread-' + user?.id)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, loadUnread)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, loadUnread)
+      .channel('tutor-counts-' + user?.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadCounts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadCounts)
       .subscribe();
 
-    const poll = setInterval(loadUnread, 30000);
+    const poll = setInterval(loadCounts, 30000);
 
-    const sub = AppState.addEventListener('change', (nextState) => {
-      if (appState.current.match(/inactive|background/) && nextState === 'active') {
-        loadUnread();
-      }
-      appState.current = nextState;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (appState.current.match(/inactive|background/) && s === 'active') loadCounts();
+      appState.current = s;
     });
 
     return () => {
@@ -60,7 +67,7 @@ export default function TutorMainTabs({ user, onLogout }) {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!activeConv) loadUnread();
+    if (!activeConv) loadCounts();
   }, [activeConv, activeTab]);
 
   if (activeConv) {
@@ -68,7 +75,22 @@ export default function TutorMainTabs({ user, onLogout }) {
       <ChatDetailScreen
         user={user}
         conversation={activeConv}
-        onBack={() => { setActiveConv(null); loadUnread(); }}
+        onBack={() => { setActiveConv(null); loadCounts(); }}
+      />
+    );
+  }
+
+  if (selectedNotif) {
+    return (
+      <NotificationDetailScreen
+        notification={selectedNotif}
+        onBack={() => { setSelectedNotif(null); loadCounts(); }}
+        onAction={(action) => {
+          setSelectedNotif(null);
+          if (action.screen === 'courses') setActiveTab('schedule');
+          else if (action.screen === 'wallet') setActiveTab('wallet');
+          loadCounts();
+        }}
       />
     );
   }
@@ -92,8 +114,17 @@ export default function TutorMainTabs({ user, onLogout }) {
     <View style={styles.container}>
       <View style={styles.content}>
         {activeTab === 'schedule' && <ScheduleScreen user={user} />}
-        {activeTab === 'students' && <StudentsScreen user={user} />}
+        {activeTab === 'students' && (
+          <StudentsScreen user={user} onOpenChat={setActiveConv} />
+        )}
         {activeTab === 'messages' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
+        {activeTab === 'notifications' && (
+          <NotificationsScreen
+            user={user}
+            onRefresh={loadCounts}
+            onOpenNotif={setSelectedNotif}
+          />
+        )}
         {activeTab === 'wallet' && (
           <WalletScreen
             key={refreshKey}
@@ -103,7 +134,12 @@ export default function TutorMainTabs({ user, onLogout }) {
         )}
         {activeTab === 'profile' && <TutorProfileScreen user={user} onLogout={onLogout} />}
       </View>
-      <TutorBottomNav activeTab={activeTab} onChange={setActiveTab} unreadCount={unreadCount} />
+      <TutorBottomNav
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        unreadMsgs={unreadMsgs}
+        unreadNotifs={unreadNotifs}
+      />
     </View>
   );
 }

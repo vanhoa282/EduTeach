@@ -3,13 +3,43 @@ import { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import AuthScreen from './screens/AuthScreen';
 import MainTabs from './screens/MainTabs';
 import TutorMainTabs from './screens/TutorMainTabs';
-import { registerForPushNotifications, savePushToken } from './lib/notifications';
 
 const USER_KEY = '@eduteach_user';
+
+// Kiểm tra có phải Expo Go không
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
+// Chỉ import notifications khi KHÔNG phải Expo Go
+let Notifications = null;
+let registerForPushNotifications = null;
+let savePushToken = null;
+
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+    const notif = require('./lib/notifications');
+    registerForPushNotifications = notif.registerForPushNotifications;
+    savePushToken = notif.savePushToken;
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+    console.log('✅ Notifications ready (APK/Dev build)');
+  } catch (e) {
+    console.log('⚠️ Notifications not available:', e.message);
+  }
+} else {
+  console.log('⚠️ Running in Expo Go — push notifications disabled');
+}
 
 export default function App() {
   return (
@@ -25,7 +55,6 @@ function AppInner() {
   const notifListener = useRef(null);
   const responseListener = useRef(null);
 
-  // Auto login: load user từ storage khi mở app
   useEffect(() => {
     (async () => {
       try {
@@ -39,31 +68,39 @@ function AppInner() {
       } catch (e) {
         console.log('Load session error:', e.message);
       }
-      // Nếu không có session → splash 2s → auth
-      setTimeout(() => setScreen('auth'), 2000);
+      setTimeout(() => setScreen('auth'), 1500);
     })();
   }, []);
 
-  // Setup push khi có user
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || isExpoGo || !Notifications || !registerForPushNotifications) return;
 
     (async () => {
-      const token = await registerForPushNotifications();
-      if (token) await savePushToken(user.id, token);
+      try {
+        const token = await registerForPushNotifications();
+        if (token && savePushToken) await savePushToken(user.id, token);
+      } catch (e) {
+        console.log('Push setup error:', e.message);
+      }
     })();
 
-    notifListener.current = Notifications.addNotificationReceivedListener((n) => {
-      console.log('📬 Foreground notification:', n.request.content.title);
-    });
+    try {
+      notifListener.current = Notifications.addNotificationReceivedListener((n) => {
+        console.log('📬 Notification:', n.request.content.title);
+      });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((r) => {
-      console.log('👆 Tapped:', r.notification.request.content.data);
-    });
+      responseListener.current = Notifications.addNotificationResponseReceivedListener((r) => {
+        console.log('👆 Tapped:', r.notification.request.content.data);
+      });
+    } catch (e) {
+      console.log('Notif listener error:', e.message);
+    }
 
     return () => {
-      if (notifListener.current) notifListener.current.remove();
-      if (responseListener.current) responseListener.current.remove();
+      try {
+        if (notifListener.current) notifListener.current.remove();
+        if (responseListener.current) responseListener.current.remove();
+      } catch (e) {}
     };
   }, [user?.id]);
 
