@@ -10,10 +10,10 @@ import TutorMainTabs from './screens/TutorMainTabs';
 
 const USER_KEY = '@eduteach_user';
 
-// Kiểm tra có phải Expo Go không
+// Kiểm tra có phải Expo Go
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
-// Chỉ import notifications khi KHÔNG phải Expo Go
+// Chỉ load notifications khi là APK
 let Notifications = null;
 let registerForPushNotifications = null;
 let savePushToken = null;
@@ -33,12 +33,10 @@ if (!isExpoGo) {
         shouldSetBadge: true,
       }),
     });
-    console.log('✅ Notifications ready (APK/Dev build)');
+    console.log('✅ Notifications ready');
   } catch (e) {
-    console.log('⚠️ Notifications not available:', e.message);
+    console.log('⚠️ Notifications init failed:', e.message);
   }
-} else {
-  console.log('⚠️ Running in Expo Go — push notifications disabled');
 }
 
 export default function App() {
@@ -52,33 +50,57 @@ export default function App() {
 function AppInner() {
   const [screen, setScreen] = useState('splash');
   const [user, setUser] = useState(null);
+  const [bootError, setBootError] = useState(null);
   const notifListener = useRef(null);
   const responseListener = useRef(null);
 
+  // Boot: load session
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(USER_KEY);
+        if (cancelled) return;
+
         if (stored) {
-          const u = JSON.parse(stored);
-          setUser(u);
-          setScreen('main');
-          return;
+          try {
+            const u = JSON.parse(stored);
+            if (u && u.id && u.role) {
+              setUser(u);
+              setScreen('main');
+              return;
+            }
+          } catch (parseErr) {
+            console.log('Parse session error:', parseErr.message);
+            await AsyncStorage.removeItem(USER_KEY);
+          }
         }
       } catch (e) {
         console.log('Load session error:', e.message);
       }
-      setTimeout(() => setScreen('auth'), 1500);
+
+      if (!cancelled) {
+        setTimeout(() => setScreen('auth'), 1200);
+      }
     })();
+
+    return () => { cancelled = true; };
   }, []);
 
+  // Push setup (chỉ APK)
   useEffect(() => {
-    if (!user?.id || isExpoGo || !Notifications || !registerForPushNotifications) return;
+    if (!user?.id || isExpoGo) return;
+    if (!Notifications || !registerForPushNotifications) return;
+
+    let mounted = true;
 
     (async () => {
       try {
         const token = await registerForPushNotifications();
-        if (token && savePushToken) await savePushToken(user.id, token);
+        if (mounted && token && savePushToken) {
+          await savePushToken(user.id, token);
+        }
       } catch (e) {
         console.log('Push setup error:', e.message);
       }
@@ -88,7 +110,6 @@ function AppInner() {
       notifListener.current = Notifications.addNotificationReceivedListener((n) => {
         console.log('📬 Notification:', n.request.content.title);
       });
-
       responseListener.current = Notifications.addNotificationResponseReceivedListener((r) => {
         console.log('👆 Tapped:', r.notification.request.content.data);
       });
@@ -97,6 +118,7 @@ function AppInner() {
     }
 
     return () => {
+      mounted = false;
       try {
         if (notifListener.current) notifListener.current.remove();
         if (responseListener.current) responseListener.current.remove();
@@ -109,7 +131,9 @@ function AppInner() {
     setScreen('main');
     try {
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(u));
-    } catch (e) {}
+    } catch (e) {
+      console.log('Save session error:', e.message);
+    }
   };
 
   const handleLogout = async () => {
@@ -119,6 +143,17 @@ function AppInner() {
       await AsyncStorage.removeItem(USER_KEY);
     } catch (e) {}
   };
+
+  // Nếu có boot error → hiện lên để biết
+  if (bootError) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorTitle}>Có lỗi xảy ra</Text>
+        <Text style={styles.errorText}>{bootError}</Text>
+        <Text style={styles.errorHint}>Chụp màn hình này gửi admin</Text>
+      </View>
+    );
+  }
 
   if (screen === 'splash') {
     return (
@@ -148,4 +183,10 @@ const styles = StyleSheet.create({
   logo: { fontSize: 80 },
   appName: { fontSize: 32, fontWeight: 'bold', color: '#2563EB', marginTop: 10 },
   tagline: { fontSize: 14, color: '#666', marginTop: 5 },
+  errorContainer: {
+    flex: 1, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center', padding: 20,
+  },
+  errorTitle: { fontSize: 20, fontWeight: 'bold', color: '#DC2626', marginBottom: 12 },
+  errorText: { fontSize: 13, color: '#7F1D1D', textAlign: 'center', lineHeight: 20 },
+  errorHint: { fontSize: 12, color: '#9CA3AF', marginTop: 20 },
 });
