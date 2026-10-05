@@ -1,14 +1,31 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import ErrorCatcher from './components/ErrorCatcher';
 import AuthScreen from './screens/AuthScreen';
 import MainTabs from './screens/MainTabs';
 import TutorMainTabs from './screens/TutorMainTabs';
 
 const USER_KEY = '@eduteach_user';
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
+let Notifications = null;
+let registerForPushNotifications = null;
+let savePushToken = null;
+
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+    const notif = require('./lib/notifications');
+    registerForPushNotifications = notif.registerForPushNotifications;
+    savePushToken = notif.savePushToken;
+  } catch (e) {
+    console.log('Notif init fail:', e.message);
+  }
+}
 
 export default function App() {
   return (
@@ -23,6 +40,8 @@ export default function App() {
 function AppInner() {
   const [screen, setScreen] = useState('splash');
   const [user, setUser] = useState(null);
+  const notifListener = useRef(null);
+  const responseListener = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +68,35 @@ function AppInner() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id || isExpoGo) return;
+    if (!Notifications || !registerForPushNotifications) return;
+
+    let mounted = true;
+
+    (async () => {
+      try {
+        const token = await registerForPushNotifications();
+        if (mounted && token && savePushToken) await savePushToken(user.id, token);
+      } catch (e) {
+        console.log('Push setup error:', e.message);
+      }
+    })();
+
+    try {
+      notifListener.current = Notifications.addNotificationReceivedListener(() => {});
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(() => {});
+    } catch (e) {}
+
+    return () => {
+      mounted = false;
+      try {
+        if (notifListener.current) notifListener.current.remove();
+        if (responseListener.current) responseListener.current.remove();
+      } catch (e) {}
+    };
+  }, [user?.id]);
 
   const handleLogin = async (u) => {
     setUser(u);
