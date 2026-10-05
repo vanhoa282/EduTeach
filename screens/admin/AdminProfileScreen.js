@@ -2,15 +2,20 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function AdminProfileScreen({ user, onLogout }) {
+export default function AdminProfileScreen({ user, onLogout, onOpenScreen }) {
   const items = [
-    { icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
-    { icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
-    { icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
-    { icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#F59E0B' },
-    { icon: 'shield-outline', label: 'Bảo mật', color: '#EF4444' },
-    { icon: 'document-text-outline', label: 'Nhật ký hoạt động', color: '#6B7280' },
+    { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
+    { key: 'announcements', icon: 'megaphone-outline', label: 'Thông báo hệ thống', color: '#EC4899' },
+    { key: 'settings', icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
+    { key: 'commission', icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
+    { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#F59E0B' },
+    { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#EF4444' },
+    { key: 'support', icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#6B7280' },
   ];
+
+  const handleItem = (key) => {
+    if (onOpenScreen) onOpenScreen(key);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -30,9 +35,10 @@ export default function AdminProfileScreen({ user, onLogout }) {
         <View style={styles.menu}>
           {items.map((item, idx) => (
             <TouchableOpacity
-              key={idx}
+              key={item.key}
               style={[styles.menuItem, idx === items.length - 1 && styles.menuItemLast]}
               activeOpacity={0.7}
+              onPress={() => handleItem(item.key)}
             >
               <View style={[styles.menuIconBox, { backgroundColor: item.color + '15' }]}>
                 <Ionicons name={item.icon} size={20} color={item.color} />

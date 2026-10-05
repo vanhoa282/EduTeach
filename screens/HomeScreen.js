@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { getTutors } from '../lib/auth';
+import AnnouncementBanner from '../components/AnnouncementBanner';
 
 const categories = [
   { id: 'all', name: 'Tất cả', icon: 'apps-outline', color: '#6B7280', bg: '#F3F4F6' },
@@ -37,12 +38,10 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
   };
 
   const filteredTutors = tutors.filter(t => {
-    // Lọc theo category
     if (activeCat !== 'all') {
       const inCat = (t.subject || '').toLowerCase().includes(activeCat.toLowerCase());
       if (!inCat) return false;
     }
-    // Lọc theo search
     if (search.trim()) {
       const q = search.toLowerCase();
       return (
@@ -53,14 +52,8 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
     return true;
   });
 
-  const handleCatPress = (catId) => {
-    setActiveCat(catId);
-  };
-
   const handleSeeAll = () => {
-    if (onOpenAllTutors) {
-      onOpenAllTutors({ category: activeCat, search });
-    }
+    if (onOpenAllTutors) onOpenAllTutors({ category: activeCat, search });
   };
 
   return (
@@ -79,6 +72,8 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
             <Ionicons name="search" size={22} color="#111" />
           </TouchableOpacity>
         </View>
+
+        <AnnouncementBanner />
 
         <Text style={styles.hero}>Tìm gia sư phù hợp{'\n'}cho con bạn</Text>
 
@@ -116,7 +111,7 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
               <TouchableOpacity
                 key={cat.id}
                 style={styles.categoryCard}
-                onPress={() => handleCatPress(cat.id)}
+                onPress={() => setActiveCat(cat.id)}
                 activeOpacity={0.7}
               >
                 <View
@@ -128,9 +123,7 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
                 >
                   <Ionicons name={cat.icon} size={26} color={cat.color} />
                 </View>
-                <Text
-                  style={[styles.categoryName, active && { color: cat.color, fontWeight: 'bold' }]}
-                >
+                <Text style={[styles.categoryName, active && { color: cat.color, fontWeight: 'bold' }]}>
                   {cat.name}
                 </Text>
               </TouchableOpacity>
@@ -150,7 +143,6 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
         {loading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator size="large" color="#2563EB" />
-            <Text style={styles.loadingText}>Đang tải gia sư...</Text>
           </View>
         ) : filteredTutors.length === 0 ? (
           <View style={styles.emptyBox}>
@@ -161,14 +153,6 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
                 ? `Chưa có gia sư dạy môn ${activeCat}`
                 : 'Thử tìm với từ khoá khác'}
             </Text>
-            {activeCat !== 'all' && (
-              <TouchableOpacity
-                style={styles.clearFilterBtn}
-                onPress={() => setActiveCat('all')}
-              >
-                <Text style={styles.clearFilterText}>Bỏ lọc danh mục</Text>
-              </TouchableOpacity>
-            )}
           </View>
         ) : (
           filteredTutors.slice(0, 5).map(tutor => (
@@ -242,15 +226,9 @@ const styles = StyleSheet.create({
   },
   categoryName: { fontSize: 12, color: '#374151', fontWeight: '600' },
   loadingBox: { alignItems: 'center', paddingVertical: 40 },
-  loadingText: { fontSize: 13, color: '#9CA3AF', marginTop: 12 },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginTop: 12 },
   emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4, textAlign: 'center' },
-  clearFilterBtn: {
-    marginTop: 16, paddingHorizontal: 20, paddingVertical: 10,
-    backgroundColor: '#EFF6FF', borderRadius: 20,
-  },
-  clearFilterText: { fontSize: 13, color: '#2563EB', fontWeight: '600' },
   tutorCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
     borderRadius: 16, padding: 12, marginBottom: 12,
@@ -269,8 +247,7 @@ const styles = StyleSheet.create({
   tutorPriceUnit: { fontSize: 11, color: '#9CA3AF' },
   seeMoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 14, backgroundColor: '#EFF6FF', borderRadius: 12,
-    marginTop: 4,
+    paddingVertical: 14, backgroundColor: '#EFF6FF', borderRadius: 12, marginTop: 4,
   },
   seeMoreText: { fontSize: 14, color: '#2563EB', fontWeight: '600' },
 });

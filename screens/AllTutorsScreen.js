@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -22,6 +22,22 @@ const SORTS = [
   { key: 'reviews', label: 'Nhiều đánh giá', icon: 'chatbubbles' },
 ];
 
+const PRICE_RANGES = [
+  { key: 'all', label: 'Mọi giá' },
+  { key: 'u100', label: 'Dưới 100k' },
+  { key: '100-200', label: '100k - 200k' },
+  { key: '200-500', label: '200k - 500k' },
+  { key: 'o500', label: 'Trên 500k' },
+];
+
+const EXP_RANGES = [
+  { key: 'all', label: 'Mọi kinh nghiệm' },
+  { key: 'u1', label: 'Dưới 1 năm' },
+  { key: '1-3', label: '1 - 3 năm' },
+  { key: '3-5', label: '3 - 5 năm' },
+  { key: 'o5', label: 'Trên 5 năm' },
+];
+
 export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCategory, initialSearch }) {
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +46,9 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
   const [activeCat, setActiveCat] = useState(initialCategory || 'all');
   const [sort, setSort] = useState('rating');
   const [showSort, setShowSort] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const [priceRange, setPriceRange] = useState('all');
+  const [expRange, setExpRange] = useState('all');
 
   const load = async () => {
     const data = await getTutors();
@@ -45,7 +64,12 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
     setRefreshing(false);
   };
 
-  // Filter + Sort
+  const getExpYears = (str) => {
+    if (!str) return 0;
+    const m = str.match(/(\d+)/);
+    return m ? parseInt(m[1]) : 0;
+  };
+
   let filtered = tutors.filter(t => {
     if (activeCat !== 'all') {
       const inCat = (t.subject || '').toLowerCase().includes(activeCat.toLowerCase());
@@ -53,10 +77,24 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
     }
     if (search.trim()) {
       const q = search.toLowerCase();
-      return (
-        (t.name || '').toLowerCase().includes(q) ||
-        (t.subject || '').toLowerCase().includes(q)
-      );
+      const match = (t.name || '').toLowerCase().includes(q) || (t.subject || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    // Filter giá
+    if (priceRange !== 'all') {
+      const p = t.price;
+      if (priceRange === 'u100' && p >= 100000) return false;
+      if (priceRange === '100-200' && (p < 100000 || p > 200000)) return false;
+      if (priceRange === '200-500' && (p < 200000 || p > 500000)) return false;
+      if (priceRange === 'o500' && p <= 500000) return false;
+    }
+    // Filter kinh nghiệm
+    if (expRange !== 'all') {
+      const y = getExpYears(t.experience);
+      if (expRange === 'u1' && y >= 1) return false;
+      if (expRange === '1-3' && (y < 1 || y > 3)) return false;
+      if (expRange === '3-5' && (y < 3 || y > 5)) return false;
+      if (expRange === 'o5' && y <= 5) return false;
     }
     return true;
   });
@@ -70,6 +108,11 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
   });
 
   const currentSort = SORTS.find(s => s.key === sort);
+  const activeFiltersCount = (priceRange !== 'all' ? 1 : 0) + (expRange !== 'all' ? 1 : 0);
+
+  const clearAll = () => {
+    setActiveCat('all'); setSearch(''); setPriceRange('all'); setExpRange('all');
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -78,7 +121,14 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Tất cả gia sư</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity style={styles.backBtn} onPress={() => setShowFilter(true)}>
+          <Ionicons name="options-outline" size={22} color="#111" />
+          {activeFiltersCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchWrap}>
@@ -109,20 +159,14 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
                 key={cat.id}
                 style={[styles.catPill, active && styles.catPillActive]}
                 onPress={() => setActiveCat(cat.id)}
-                activeOpacity={0.7}
               >
-                <Text style={[styles.catPillText, active && styles.catPillTextActive]}>
-                  {cat.name}
-                </Text>
+                <Text style={[styles.catPillText, active && styles.catPillTextActive]}>{cat.name}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        <TouchableOpacity
-          style={styles.sortBtn}
-          onPress={() => setShowSort(!showSort)}
-        >
+        <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(!showSort)}>
           <Ionicons name={currentSort?.icon || 'funnel'} size={16} color="#2563EB" />
           <Text style={styles.sortBtnText}>Sắp xếp</Text>
         </TouchableOpacity>
@@ -149,10 +193,9 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
       <View style={styles.resultBar}>
         <Text style={styles.resultText}>
           <Text style={{ fontWeight: 'bold', color: '#111' }}>{filtered.length}</Text> gia sư
-          {activeCat !== 'all' && ` · môn ${activeCat}`}
         </Text>
-        {(activeCat !== 'all' || search) && (
-          <TouchableOpacity onPress={() => { setActiveCat('all'); setSearch(''); }}>
+        {(activeCat !== 'all' || search || activeFiltersCount > 0) && (
+          <TouchableOpacity onPress={clearAll}>
             <Text style={styles.clearText}>Xoá lọc</Text>
           </TouchableOpacity>
         )}
@@ -171,14 +214,12 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
           <View style={styles.emptyBox}>
             <Ionicons name="search-outline" size={48} color="#D1D5DB" />
             <Text style={styles.emptyTitle}>Không tìm thấy gia sư</Text>
-            <Text style={styles.emptyDesc}>Thử tìm với từ khoá khác</Text>
           </View>
         ) : (
           filtered.map(tutor => (
             <TouchableOpacity
               key={tutor.id}
               style={styles.tutorCard}
-              activeOpacity={0.7}
               onPress={() => onSelectTutor(tutor)}
             >
               <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
@@ -202,6 +243,65 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
         )}
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* Filter Modal */}
+      <Modal visible={showFilter} transparent animationType="slide" onRequestClose={() => setShowFilter(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Bộ lọc nâng cao</Text>
+              <TouchableOpacity onPress={() => setShowFilter(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.filterLabel}>Mức giá</Text>
+            <View style={styles.chipGrid}>
+              {PRICE_RANGES.map(p => (
+                <TouchableOpacity
+                  key={p.key}
+                  style={[styles.filterChip, priceRange === p.key && styles.filterChipActive]}
+                  onPress={() => setPriceRange(p.key)}
+                >
+                  <Text style={[styles.filterChipText, priceRange === p.key && styles.filterChipTextActive]}>
+                    {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.filterLabel}>Kinh nghiệm</Text>
+            <View style={styles.chipGrid}>
+              {EXP_RANGES.map(e => (
+                <TouchableOpacity
+                  key={e.key}
+                  style={[styles.filterChip, expRange === e.key && styles.filterChipActive]}
+                  onPress={() => setExpRange(e.key)}
+                >
+                  <Text style={[styles.filterChipText, expRange === e.key && styles.filterChipTextActive]}>
+                    {e.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.resetBtn}
+                onPress={() => { setPriceRange('all'); setExpRange('all'); }}
+              >
+                <Text style={styles.resetBtnText}>Đặt lại</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.applyBtn}
+                onPress={() => setShowFilter(false)}
+              >
+                <Text style={styles.applyBtnText}>Áp dụng</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -215,9 +315,15 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     width: 40, height: 40, borderRadius: 20, backgroundColor: '#F3F4F6',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', position: 'relative',
   },
   topBarTitle: { fontSize: 16, fontWeight: '600', color: '#111' },
+  filterBadge: {
+    position: 'absolute', top: -2, right: -2,
+    backgroundColor: '#EF4444', minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+  },
+  filterBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
   searchWrap: { paddingHorizontal: 20, paddingTop: 16 },
   searchBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -268,7 +374,6 @@ const styles = StyleSheet.create({
   loadingBox: { alignItems: 'center', paddingVertical: 60 },
   emptyBox: { alignItems: 'center', paddingVertical: 60 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginTop: 12 },
-  emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
   tutorCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
     borderRadius: 16, padding: 12, marginBottom: 12,
@@ -285,4 +390,35 @@ const styles = StyleSheet.create({
   tutorPriceBox: { alignItems: 'flex-end' },
   tutorPrice: { fontSize: 18, fontWeight: 'bold', color: '#2563EB' },
   tutorPriceUnit: { fontSize: 11, color: '#9CA3AF' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalBox: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 32,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111' },
+  filterLabel: { fontSize: 13, color: '#374151', fontWeight: '600', marginBottom: 8, marginTop: 12 },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20,
+    backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: 'transparent',
+  },
+  filterChipActive: { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
+  filterChipText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
+  filterChipTextActive: { color: '#2563EB', fontWeight: '600' },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  resetBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 12,
+    backgroundColor: '#F3F4F6', alignItems: 'center',
+  },
+  resetBtnText: { fontSize: 15, color: '#6B7280', fontWeight: '600' },
+  applyBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 12,
+    backgroundColor: '#2563EB', alignItems: 'center',
+  },
+  applyBtnText: { fontSize: 15, color: '#fff', fontWeight: '600' },
 });

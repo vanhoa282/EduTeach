@@ -1,27 +1,48 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { updateProfile } from '../../lib/auth';
-
-const AVATARS = [
-  'https://i.pravatar.cc/150?img=12',
-  'https://i.pravatar.cc/150?img=45',
-  'https://i.pravatar.cc/150?img=32',
-  'https://i.pravatar.cc/150?img=15',
-  'https://i.pravatar.cc/150?img=68',
-  'https://i.pravatar.cc/150?img=49',
-];
+import { pickImage, takePhoto, uploadImage } from '../../lib/upload';
 
 export default function EditProfileScreen({ user, onBack, onSaved }) {
   const [fullName, setFullName] = useState(user?.full_name || '');
-  const [avatar, setAvatar] = useState(user?.avatar_url || AVATARS[0]);
+  const [avatar, setAvatar] = useState(user?.avatar_url || null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const pickFromLibrary = async () => {
+    const res = await pickImage({ allowsEditing: true, aspect: [1, 1] });
+    if (res.cancelled) return;
+    if (res.error) return Alert.alert('Lỗi', res.error);
+    setUploading(true);
+    const up = await uploadImage({ uri: res.uri, bucket: 'bills', folder: 'avatars' });
+    setUploading(false);
+    if (up.error) return Alert.alert('Lỗi upload', up.error);
+    setAvatar(up.url);
+  };
+
+  const capturePhoto = async () => {
+    const res = await takePhoto({ allowsEditing: true, aspect: [1, 1] });
+    if (res.cancelled) return;
+    if (res.error) return Alert.alert('Lỗi', res.error);
+    setUploading(true);
+    const up = await uploadImage({ uri: res.uri, bucket: 'bills', folder: 'avatars' });
+    setUploading(false);
+    if (up.error) return Alert.alert('Lỗi upload', up.error);
+    setAvatar(up.url);
+  };
+
+  const handleAvatarPress = () => {
+    Alert.alert('Đổi avatar', 'Chọn nguồn ảnh', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Chụp ảnh', onPress: capturePhoto },
+      { text: 'Thư viện', onPress: pickFromLibrary },
+    ]);
+  };
 
   const handleSave = async () => {
-    if (!fullName.trim()) {
-      return Alert.alert('Lỗi', 'Vui lòng nhập họ tên');
-    }
+    if (!fullName.trim()) return Alert.alert('Lỗi', 'Vui lòng nhập họ tên');
 
     setSaving(true);
     const res = await updateProfile(user.id, {
@@ -37,6 +58,9 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
     ]);
   };
 
+  const roleLabel = user?.role === 'admin' ? 'Quản trị viên' : user?.role === 'tutor' ? 'Gia sư' : 'Học sinh';
+  const roleIcon = user?.role === 'admin' ? 'shield-checkmark' : user?.role === 'tutor' ? 'briefcase' : 'school';
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
@@ -49,28 +73,33 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.avatarSection}>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarEmoji}>
-              {user?.role === 'tutor' ? '👨‍🏫' : '👤'}
-            </Text>
-          </View>
-          <Text style={styles.avatarLabel}>Chọn avatar</Text>
-        </View>
+          <TouchableOpacity
+            style={styles.avatarWrap}
+            onPress={handleAvatarPress}
+            activeOpacity={0.8}
+            disabled={uploading}
+          >
+            {avatar ? (
+              <Image source={{ uri: avatar }} style={styles.avatarImg} />
+            ) : (
+              <Ionicons
+                name={user?.role === 'admin' ? 'shield-checkmark' : 'person'}
+                size={48}
+                color="#2563EB"
+              />
+            )}
 
-        <View style={styles.avatarGrid}>
-          {AVATARS.map((url, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.avatarOption,
-                avatar === url && styles.avatarOptionActive,
-              ]}
-              onPress={() => setAvatar(url)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.avatarOptionText}>#{idx + 1}</Text>
-            </TouchableOpacity>
-          ))}
+            {uploading ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : (
+              <View style={styles.cameraIcon}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.avatarHint}>Bấm để đổi ảnh đại diện</Text>
         </View>
 
         <Text style={styles.label}>Họ và tên</Text>
@@ -91,18 +120,12 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
           <Text style={styles.inputDisabled}>{user?.phone}</Text>
           <Ionicons name="lock-closed" size={16} color="#D1D5DB" />
         </View>
-        <Text style={styles.hint}>SĐT không thể thay đổi. Liên hệ admin nếu cần.</Text>
+        <Text style={styles.hint}>SĐT không thể thay đổi</Text>
 
         <Text style={styles.label}>Vai trò</Text>
         <View style={[styles.inputBox, styles.inputBoxDisabled]}>
-          <Ionicons
-            name={user?.role === 'admin' ? 'shield-checkmark' : user?.role === 'tutor' ? 'briefcase' : 'school'}
-            size={20}
-            color="#D1D5DB"
-          />
-          <Text style={styles.inputDisabled}>
-            {user?.role === 'admin' ? 'Quản trị viên' : user?.role === 'tutor' ? 'Gia sư' : 'Học sinh'}
-          </Text>
+          <Ionicons name={roleIcon} size={20} color="#D1D5DB" />
+          <Text style={styles.inputDisabled}>{roleLabel}</Text>
         </View>
 
         <View style={{ height: 120 }} />
@@ -110,9 +133,9 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+          style={[styles.saveBtn, (saving || uploading) && { opacity: 0.7 }]}
           onPress={handleSave}
-          disabled={saving}
+          disabled={saving || uploading}
         >
           {saving ? (
             <ActivityIndicator color="#fff" />
@@ -141,29 +164,28 @@ const styles = StyleSheet.create({
   },
   topBarTitle: { fontSize: 16, fontWeight: '600', color: '#111' },
   content: { padding: 20 },
-  avatarSection: { alignItems: 'center', marginBottom: 20 },
+  avatarSection: { alignItems: 'center', marginBottom: 24 },
   avatarWrap: {
-    width: 100, height: 100, borderRadius: 50,
+    width: 110, height: 110, borderRadius: 55,
     backgroundColor: '#EFF6FF',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10, position: 'relative',
+    overflow: 'hidden',
   },
-  avatarEmoji: { fontSize: 48 },
-  avatarLabel: { fontSize: 13, color: '#6B7280' },
-  avatarGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
-    justifyContent: 'center', marginBottom: 24,
-  },
-  avatarOption: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: '#fff',
-    borderWidth: 2, borderColor: '#E5E7EB',
+  avatarImg: { width: '100%', height: '100%' },
+  avatarOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarOptionActive: {
-    borderColor: '#2563EB', backgroundColor: '#EFF6FF',
+  cameraIcon: {
+    position: 'absolute', bottom: 4, right: 4,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#2563EB',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 3, borderColor: '#fff',
   },
-  avatarOptionText: { fontSize: 12, fontWeight: 'bold', color: '#6B7280' },
+  avatarHint: { fontSize: 12, color: '#9CA3AF' },
   label: { fontSize: 13, color: '#374151', fontWeight: '600', marginBottom: 8, marginTop: 4 },
   inputBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
