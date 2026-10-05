@@ -3,18 +3,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { getTutorReviews, getRatingStats, maskName } from '../lib/reviews';
+import { getMySlots, formatSlots } from '../lib/tutorSchedule';
 
 export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat }) {
   const [reviews, setReviews] = useState([]);
   const [stats, setStats] = useState({ 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, total: 0, avg: 0 });
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [filterStar, setFilterStar] = useState(0);
+  const [slots, setSlots] = useState({});
 
   useEffect(() => {
     (async () => {
-      const data = await getTutorReviews(tutor.id);
+      const [data, slotData] = await Promise.all([
+        getTutorReviews(tutor.id),
+        getMySlots(tutor.id),
+      ]);
       setReviews(data);
       setStats(getRatingStats(data));
+      setSlots(slotData || {});
       setLoadingReviews(false);
     })();
   }, [tutor.id]);
@@ -40,12 +46,7 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
   const StarRow = ({ value, size = 14 }) => (
     <View style={{ flexDirection: 'row', gap: 2 }}>
       {[1, 2, 3, 4, 5].map(i => (
-        <Ionicons
-          key={i}
-          name={i <= value ? 'star' : 'star-outline'}
-          size={size}
-          color="#F59E0B"
-        />
+        <Ionicons key={i} name={i <= value ? 'star' : 'star-outline'} size={size} color="#F59E0B" />
       ))}
     </View>
   );
@@ -64,6 +65,8 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
     );
   };
 
+  const hasSlots = Object.keys(slots).length > 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
@@ -77,12 +80,10 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {/* Profile */}
         <View style={styles.profileBox}>
           <Image source={{ uri: tutor.avatar }} style={styles.avatar} />
           <Text style={styles.name}>{tutor.name}</Text>
           <Text style={styles.subject}>{tutor.subject}</Text>
-
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
               <View style={styles.statTop}>
@@ -104,15 +105,13 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
           </View>
         </View>
 
-        {/* Giới thiệu */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Giới thiệu</Text>
           <Text style={styles.sectionText}>
-            {tutor.bio || `Gia sư nhiệt tình, có ${tutor.experience} kinh nghiệm giảng dạy môn ${tutor.subject}. Phương pháp dạy dễ hiểu, tận tâm với học sinh.`}
+            {tutor.bio || `Gia sư nhiệt tình, có ${tutor.experience} kinh nghiệm giảng dạy môn ${tutor.subject}.`}
           </Text>
         </View>
 
-        {/* Chuyên môn */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Chuyên môn</Text>
           <View style={styles.tagsRow}>
@@ -124,24 +123,23 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
           </View>
         </View>
 
-        {/* Lịch dạy */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Lịch dạy</Text>
-          <View style={styles.scheduleBox}>
-            <Ionicons name="time-outline" size={18} color="#2563EB" />
-            <Text style={styles.scheduleText}>T2 - T6: 18h - 21h</Text>
-          </View>
-          <View style={styles.scheduleBox}>
-            <Ionicons name="time-outline" size={18} color="#2563EB" />
-            <Text style={styles.scheduleText}>T7 - CN: 8h - 17h</Text>
-          </View>
+          <Text style={styles.sectionTitle}>Lịch rảnh</Text>
+          {hasSlots ? (
+            <View style={styles.scheduleBox}>
+              <Ionicons name="time-outline" size={18} color="#2563EB" />
+              <Text style={styles.scheduleText}>{formatSlots(slots)}</Text>
+            </View>
+          ) : (
+            <View style={styles.noSlotsBox}>
+              <Ionicons name="calendar-outline" size={18} color="#9CA3AF" />
+              <Text style={styles.noSlotsText}>Gia sư chưa cập nhật lịch rảnh</Text>
+            </View>
+          )}
         </View>
 
-        {/* Đánh giá */}
         <View style={styles.section}>
-          <View style={styles.reviewHeaderRow}>
-            <Text style={styles.sectionTitle}>Đánh giá ({stats.total})</Text>
-          </View>
+          <Text style={styles.sectionTitle}>Đánh giá ({stats.total})</Text>
 
           {loadingReviews ? (
             <View style={{ alignItems: 'center', paddingVertical: 20 }}>
@@ -151,11 +149,9 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
             <View style={styles.emptyReviews}>
               <Ionicons name="chatbubble-outline" size={36} color="#D1D5DB" />
               <Text style={styles.emptyReviewText}>Chưa có đánh giá nào</Text>
-              <Text style={styles.emptyReviewDesc}>Hãy là người đầu tiên đánh giá gia sư này</Text>
             </View>
           ) : (
             <>
-              {/* Summary */}
               <View style={styles.summaryBox}>
                 <View style={styles.summaryLeft}>
                   <Text style={styles.bigAvg}>{stats.avg.toFixed(1)}</Text>
@@ -167,12 +163,7 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
                 </View>
               </View>
 
-              {/* Filter chips */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterChips}
-              >
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
                 <TouchableOpacity
                   style={[styles.chip, filterStar === 0 && styles.chipActive]}
                   onPress={() => setFilterStar(0)}
@@ -198,42 +189,31 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
                 })}
               </ScrollView>
 
-              {/* Reviews list */}
-              {filteredReviews.length === 0 ? (
-                <Text style={styles.noMatchText}>Không có đánh giá {filterStar} sao</Text>
-              ) : (
-                filteredReviews.map(r => (
-                  <View key={r.id} style={styles.reviewCard}>
-                    <View style={styles.reviewTop}>
-                      <View style={styles.reviewAvatar}>
-                        <Text style={styles.reviewAvatarText}>
-                          {(r.student?.full_name || 'U').charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.reviewName}>
-                          {maskName(r.student?.full_name)}
-                        </Text>
-                        <View style={styles.reviewMeta}>
-                          <StarRow value={Math.round(r.rating)} size={12} />
-                          <Text style={styles.reviewTime}>{formatDate(r.created_at)}</Text>
-                        </View>
+              {filteredReviews.map(r => (
+                <View key={r.id} style={styles.reviewCard}>
+                  <View style={styles.reviewTop}>
+                    <View style={styles.reviewAvatar}>
+                      <Text style={styles.reviewAvatarText}>
+                        {(r.student?.full_name || 'U').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.reviewName}>{maskName(r.student?.full_name)}</Text>
+                      <View style={styles.reviewMeta}>
+                        <StarRow value={Math.round(r.rating)} size={12} />
+                        <Text style={styles.reviewTime}>{formatDate(r.created_at)}</Text>
                       </View>
                     </View>
-                    {r.comment && (
-                      <Text style={styles.reviewComment}>{r.comment}</Text>
-                    )}
-                    {r.subject && (
-                      <View style={styles.reviewTagRow}>
-                        <Ionicons name="book-outline" size={11} color="#9CA3AF" />
-                        <Text style={styles.reviewTagText}>
-                          {r.subject} · Buổi {r.session_number}
-                        </Text>
-                      </View>
-                    )}
                   </View>
-                ))
-              )}
+                  {r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
+                  {r.subject && (
+                    <View style={styles.reviewTagRow}>
+                      <Ionicons name="book-outline" size={11} color="#9CA3AF" />
+                      <Text style={styles.reviewTagText}>{r.subject} · Buổi {r.session_number}</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
             </>
           )}
         </View>
@@ -241,13 +221,8 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Bottom bar */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.chatBtn}
-          onPress={() => onChat(tutor)}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity style={styles.chatBtn} onPress={() => onChat(tutor)} activeOpacity={0.8}>
           <Ionicons name="chatbubble-ellipses" size={22} color="#2563EB" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.bookBtn} onPress={() => onBook(tutor)}>
@@ -277,10 +252,7 @@ const styles = StyleSheet.create({
     paddingVertical: 28, paddingHorizontal: 20,
     borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
   },
-  avatar: {
-    width: 100, height: 100, borderRadius: 50, marginBottom: 12,
-    backgroundColor: '#E5E7EB',
-  },
+  avatar: { width: 100, height: 100, borderRadius: 50, marginBottom: 12, backgroundColor: '#E5E7EB' },
   name: { fontSize: 22, fontWeight: 'bold', color: '#111', marginBottom: 4 },
   subject: { fontSize: 14, color: '#666', marginBottom: 20 },
   statsRow: {
@@ -300,22 +272,14 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginBottom: 10 },
   sectionText: { fontSize: 14, color: '#4B5563', lineHeight: 22 },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tag: {
-    backgroundColor: '#EFF6FF', paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20,
-  },
+  tag: { backgroundColor: '#EFF6FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   tagText: { fontSize: 13, color: '#2563EB', fontWeight: '600' },
-  scheduleBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 8,
-  },
-  scheduleText: { fontSize: 14, color: '#4B5563' },
-
-  reviewHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  scheduleBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8 },
+  scheduleText: { flex: 1, fontSize: 14, color: '#4B5563', lineHeight: 22 },
+  noSlotsBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+  noSlotsText: { fontSize: 14, color: '#9CA3AF', fontStyle: 'italic' },
   emptyReviews: { alignItems: 'center', paddingVertical: 24 },
   emptyReviewText: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginTop: 8 },
-  emptyReviewDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
-
   summaryBox: {
     flexDirection: 'row', backgroundColor: '#F9FAFB', borderRadius: 14,
     padding: 16, marginBottom: 12, gap: 16,
@@ -329,7 +293,6 @@ const styles = StyleSheet.create({
   barTrack: { flex: 1, height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: '#F59E0B', borderRadius: 3 },
   barCount: { fontSize: 11, color: '#9CA3AF', width: 24, textAlign: 'right' },
-
   filterChips: { gap: 8, paddingVertical: 4, marginBottom: 12 },
   chip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
@@ -338,14 +301,7 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
   chipText: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
   chipTextActive: { color: '#2563EB' },
-
-  noMatchText: {
-    fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 16,
-  },
-
-  reviewCard: {
-    backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 8,
-  },
+  reviewCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 8 },
   reviewTop: { flexDirection: 'row', gap: 10 },
   reviewAvatar: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: '#2563EB',
@@ -355,16 +311,9 @@ const styles = StyleSheet.create({
   reviewName: { fontSize: 14, fontWeight: '600', color: '#111' },
   reviewMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   reviewTime: { fontSize: 11, color: '#9CA3AF' },
-  reviewComment: {
-    fontSize: 13, color: '#4B5563', lineHeight: 20,
-    marginTop: 10, paddingLeft: 46,
-  },
-  reviewTagRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: 8, paddingLeft: 46,
-  },
+  reviewComment: { fontSize: 13, color: '#4B5563', lineHeight: 20, marginTop: 10, paddingLeft: 46 },
+  reviewTagRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, paddingLeft: 46 },
   reviewTagText: { fontSize: 11, color: '#9CA3AF' },
-
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', gap: 10,

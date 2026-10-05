@@ -3,19 +3,30 @@ import { useState, useEffect, useRef } from 'react';
 import TutorBottomNav from '../components/TutorBottomNav';
 import ScheduleScreen from './tutor/ScheduleScreen';
 import StudentsScreen from './tutor/StudentsScreen';
+import StudentDetailScreen from './tutor/StudentDetailScreen';
 import WalletScreen from './tutor/WalletScreen';
 import WithdrawScreen from './tutor/WithdrawScreen';
 import TutorProfileScreen from './tutor/TutorProfileScreen';
+import TutorEditProfileScreen from './tutor/TutorEditProfileScreen';
+import MyReviewsScreen from './tutor/MyReviewsScreen';
+import SetScheduleScreen from './tutor/SetScheduleScreen';
+import RevenueScreen from './tutor/RevenueScreen';
 import NotificationsScreen from './NotificationsScreen';
 import NotificationDetailScreen from './NotificationDetailScreen';
 import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
+import EditProfileScreen from './profile/EditProfileScreen';
+import ChangePasswordScreen from './profile/ChangePasswordScreen';
+import BankScreen from './profile/BankScreen';
+import SupportScreen from './profile/SupportScreen';
+import TermsScreen from './profile/TermsScreen';
 import { getWallet } from '../lib/wallet';
 import { getNotifUnreadCount } from '../lib/notif';
-import { getUnreadCount } from '../lib/chat';
+import { getUnreadCount, getOrCreateConversation } from '../lib/chat';
 import { supabase } from '../lib/supabase';
 
-export default function TutorMainTabs({ user, onLogout }) {
+export default function TutorMainTabs({ user: initialUser, onLogout }) {
+  const [user, setUser] = useState(initialUser);
   const [activeTab, setActiveTab] = useState('schedule');
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [balance, setBalance] = useState(0);
@@ -24,6 +35,8 @@ export default function TutorMainTabs({ user, onLogout }) {
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [selectedNotif, setSelectedNotif] = useState(null);
   const [activeConv, setActiveConv] = useState(null);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [subScreen, setSubScreen] = useState(null);
   const appState = useRef(AppState.currentState);
 
   const loadBalance = async () => {
@@ -45,20 +58,16 @@ export default function TutorMainTabs({ user, onLogout }) {
   useEffect(() => {
     loadBalance();
     loadCounts();
-
     const channel = supabase
       .channel('tutor-counts-' + user?.id)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, loadCounts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, loadCounts)
       .subscribe();
-
     const poll = setInterval(loadCounts, 30000);
-
     const sub = AppState.addEventListener('change', (s) => {
       if (appState.current.match(/inactive|background/) && s === 'active') loadCounts();
       appState.current = s;
     });
-
     return () => {
       supabase.removeChannel(channel);
       clearInterval(poll);
@@ -67,15 +76,65 @@ export default function TutorMainTabs({ user, onLogout }) {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!activeConv) loadCounts();
-  }, [activeConv, activeTab]);
+    if (!activeConv && !selectedStudent) loadCounts();
+  }, [activeConv, activeTab, selectedStudent]);
+
+  if (subScreen === 'edit-profile') {
+    return <EditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={(u) => { setUser(u); setSubScreen(null); }} />;
+  }
+  if (subScreen === 'tutor-profile') {
+    return <TutorEditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'set-schedule') {
+    return <SetScheduleScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'revenue') {
+    return <RevenueScreen user={user} onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'my-reviews') {
+    return <MyReviewsScreen user={user} onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'bank') {
+    return <BankScreen user={user} onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'change-password') {
+    return <ChangePasswordScreen user={user} onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'support') {
+    return <SupportScreen onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'terms') {
+    return <TermsScreen onBack={() => setSubScreen(null)} />;
+  }
 
   if (activeConv) {
+    return <ChatDetailScreen user={user} conversation={activeConv} onBack={() => { setActiveConv(null); loadCounts(); }} />;
+  }
+
+  if (selectedStudent) {
     return (
-      <ChatDetailScreen
+      <StudentDetailScreen
         user={user}
-        conversation={activeConv}
-        onBack={() => { setActiveConv(null); loadCounts(); }}
+        student={selectedStudent}
+        onBack={() => setSelectedStudent(null)}
+        onOpenChat={async (s) => {
+          if (s.conversationId) {
+            const { data: conv } = await supabase
+              .from('conversations')
+              .select(`*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)`)
+              .eq('id', s.conversationId).maybeSingle();
+            if (conv) { setSelectedStudent(null); setActiveConv(conv); }
+            return;
+          }
+          const res = await getOrCreateConversation(s.id, user.id);
+          if (res.conversation) {
+            const { data: conv } = await supabase
+              .from('conversations')
+              .select(`*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)`)
+              .eq('id', res.conversation.id).maybeSingle();
+            if (conv) { setSelectedStudent(null); setActiveConv(conv); }
+          }
+        }}
       />
     );
   }
@@ -98,14 +157,9 @@ export default function TutorMainTabs({ user, onLogout }) {
   if (showWithdraw) {
     return (
       <WithdrawScreen
-        user={user}
-        balance={balance}
+        user={user} balance={balance}
         onBack={() => setShowWithdraw(false)}
-        onSuccess={() => {
-          setShowWithdraw(false);
-          setRefreshKey(k => k + 1);
-          setActiveTab('wallet');
-        }}
+        onSuccess={() => { setShowWithdraw(false); setRefreshKey(k => k + 1); setActiveTab('wallet'); }}
       />
     );
   }
@@ -115,24 +169,18 @@ export default function TutorMainTabs({ user, onLogout }) {
       <View style={styles.content}>
         {activeTab === 'schedule' && <ScheduleScreen user={user} />}
         {activeTab === 'students' && (
-          <StudentsScreen user={user} onOpenChat={setActiveConv} />
+          <StudentsScreen user={user} onOpenChat={setActiveConv} onOpenStudent={setSelectedStudent} />
         )}
         {activeTab === 'messages' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
         {activeTab === 'notifications' && (
-          <NotificationsScreen
-            user={user}
-            onRefresh={loadCounts}
-            onOpenNotif={setSelectedNotif}
-          />
+          <NotificationsScreen user={user} onRefresh={loadCounts} onOpenNotif={setSelectedNotif} />
         )}
         {activeTab === 'wallet' && (
-          <WalletScreen
-            key={refreshKey}
-            user={user}
-            onOpenWithdraw={() => setShowWithdraw(true)}
-          />
+          <WalletScreen key={refreshKey} user={user} onOpenWithdraw={() => setShowWithdraw(true)} />
         )}
-        {activeTab === 'profile' && <TutorProfileScreen user={user} onLogout={onLogout} />}
+        {activeTab === 'profile' && (
+          <TutorProfileScreen user={user} onLogout={onLogout} onOpenScreen={setSubScreen} />
+        )}
       </View>
       <TutorBottomNav
         activeTab={activeTab}

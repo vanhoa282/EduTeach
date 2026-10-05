@@ -11,33 +11,42 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const pickFromLibrary = async () => {
-    const res = await pickImage({ allowsEditing: true, aspect: [1, 1] });
-    if (res.cancelled) return;
-    if (res.error) return Alert.alert('Lỗi', res.error);
-    setUploading(true);
-    const up = await uploadImage({ uri: res.uri, bucket: 'bills', folder: 'avatars' });
-    setUploading(false);
-    if (up.error) return Alert.alert('Lỗi upload', up.error);
-    setAvatar(up.url);
-  };
+  const handlePick = async (source) => {
+    let res;
+    if (source === 'camera') {
+      res = await takePhoto({ allowsEditing: true, aspect: [1, 1] });
+    } else {
+      res = await pickImage({ allowsEditing: true, aspect: [1, 1] });
+    }
 
-  const capturePhoto = async () => {
-    const res = await takePhoto({ allowsEditing: true, aspect: [1, 1] });
     if (res.cancelled) return;
     if (res.error) return Alert.alert('Lỗi', res.error);
+
     setUploading(true);
-    const up = await uploadImage({ uri: res.uri, bucket: 'bills', folder: 'avatars' });
+    console.log('📤 Bắt đầu upload:', res.uri);
+
+    const up = await uploadImage({
+      uri: res.uri,
+      bucket: 'bills',
+      folder: 'avatars',
+    });
+
     setUploading(false);
+    console.log('📥 Upload result:', up);
+
     if (up.error) return Alert.alert('Lỗi upload', up.error);
-    setAvatar(up.url);
+
+    // Cache buster để image refresh
+    const finalUrl = up.url + '?t=' + Date.now();
+    setAvatar(finalUrl);
+    Alert.alert('Thành công', 'Ảnh đã upload. Bấm "Lưu thay đổi" để hoàn tất.');
   };
 
   const handleAvatarPress = () => {
     Alert.alert('Đổi avatar', 'Chọn nguồn ảnh', [
       { text: 'Huỷ', style: 'cancel' },
-      { text: 'Chụp ảnh', onPress: capturePhoto },
-      { text: 'Thư viện', onPress: pickFromLibrary },
+      { text: 'Chụp ảnh', onPress: () => handlePick('camera') },
+      { text: 'Thư viện', onPress: () => handlePick('library') },
     ]);
   };
 
@@ -45,11 +54,15 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
     if (!fullName.trim()) return Alert.alert('Lỗi', 'Vui lòng nhập họ tên');
 
     setSaving(true);
+    console.log('💾 Saving profile with avatar:', avatar);
+
     const res = await updateProfile(user.id, {
       fullName: fullName.trim(),
       avatarUrl: avatar,
     });
     setSaving(false);
+
+    console.log('💾 Save result:', res);
 
     if (res.error) return Alert.alert('Lỗi', res.error);
 
@@ -80,7 +93,12 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
             disabled={uploading}
           >
             {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImg} />
+              <Image
+                source={{ uri: avatar }}
+                style={styles.avatarImg}
+                onError={(e) => console.log('❌ Image load error:', e.nativeEvent.error)}
+                onLoad={() => console.log('✅ Image loaded')}
+              />
             ) : (
               <Ionicons
                 name={user?.role === 'admin' ? 'shield-checkmark' : 'person'}
@@ -92,6 +110,7 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
             {uploading ? (
               <View style={styles.avatarOverlay}>
                 <ActivityIndicator color="#fff" />
+                <Text style={styles.uploadingText}>Đang upload...</Text>
               </View>
             ) : (
               <View style={styles.cameraIcon}>
@@ -175,9 +194,10 @@ const styles = StyleSheet.create({
   avatarImg: { width: '100%', height: '100%' },
   avatarOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', gap: 6,
   },
+  uploadingText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   cameraIcon: {
     position: 'absolute', bottom: 4, right: 4,
     width: 32, height: 32, borderRadius: 16,
