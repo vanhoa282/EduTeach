@@ -3,10 +3,15 @@ import { useState, useEffect } from 'react';
 import AdminBottomNav from '../components/AdminBottomNav';
 import DashboardScreen from './admin/DashboardScreen';
 import UsersScreen from './admin/UsersScreen';
+import AdminTutorsScreen from './admin/AdminTutorsScreen';
+import CreateTutorScreen from './admin/CreateTutorScreen';
 import AdminProfileScreen from './admin/AdminProfileScreen';
 import OrdersScreen from './admin/OrdersScreen';
 import WithdrawsScreen from './admin/WithdrawsScreen';
 import AnnouncementsScreen from './admin/AnnouncementsScreen';
+import CommissionScreen from './admin/CommissionScreen';
+import SystemSettingsScreen from './admin/SystemSettingsScreen';
+import DisputesScreen from './admin/DisputesScreen';
 import EditProfileScreen from './profile/EditProfileScreen';
 import ChangePasswordScreen from './profile/ChangePasswordScreen';
 import BankScreen from './profile/BankScreen';
@@ -29,7 +34,25 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
 
   useEffect(() => { loadCounts(); }, [activeTab]);
 
-  // Sub-screens từ AdminProfile
+  // Sub-screens
+  if (subScreen === 'create-tutor') {
+    return (
+      <CreateTutorScreen
+        user={user}
+        onBack={() => { setSubScreen(null); setActiveTab('tutors'); }}
+        onCreated={() => { setSubScreen(null); setActiveTab('tutors'); }}
+      />
+    );
+  }
+  if (subScreen === 'commission') {
+    return <CommissionScreen onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'settings') {
+    return <SystemSettingsScreen onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'disputes') {
+    return <DisputesScreen onBack={() => setSubScreen(null)} />;
+  }
   if (subScreen === 'edit-profile') {
     return (
       <EditProfileScreen
@@ -48,8 +71,6 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
   if (subScreen === 'support') {
     return <SupportScreen onBack={() => setSubScreen(null)} />;
   }
-
-  // Announcements là sub-screen đặc biệt
   if (subScreen === 'announcements') {
     return (
       <View style={styles.container}>
@@ -57,7 +78,26 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
           <AnnouncementsScreen user={user} />
         </View>
         <AdminBottomNav
-          activeTab="profile"
+          activeTab="dashboard"
+          onChange={(t) => { setSubScreen(null); setActiveTab(t); }}
+          ordersCount={ordersCount}
+          withdrawsCount={withdrawsCount}
+        />
+      </View>
+    );
+  }
+  if (subScreen === 'profile') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <AdminProfileScreen
+            user={user}
+            onLogout={onLogout}
+            onOpenScreen={setSubScreen}
+          />
+        </View>
+        <AdminBottomNav
+          activeTab="dashboard"
           onChange={(t) => { setSubScreen(null); setActiveTab(t); }}
           ordersCount={ordersCount}
           withdrawsCount={withdrawsCount}
@@ -69,17 +109,20 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {activeTab === 'dashboard' && <DashboardScreen user={user} onBack={onBack} />}
-        {activeTab === 'orders' && <OrdersScreen />}
-        {activeTab === 'withdraws' && <WithdrawsScreen />}
-        {activeTab === 'users' && <UsersScreen />}
-        {activeTab === 'profile' && (
-          <AdminProfileScreen
+        {activeTab === 'dashboard' && (
+          <DashboardScreen
             user={user}
-            onLogout={onLogout}
+            onBack={onBack}
+            onOpenProfile={() => setSubScreen('profile')}
             onOpenScreen={setSubScreen}
           />
         )}
+        {activeTab === 'orders' && <OrdersScreen />}
+        {activeTab === 'withdraws' && <WithdrawsScreen />}
+        {activeTab === 'tutors' && (
+          <AdminTutorsScreen onOpenCreate={() => setSubScreen('create-tutor')} />
+        )}
+        {activeTab === 'users' && <UsersScreen />}
       </View>
       <AdminBottomNav
         activeTab={activeTab}

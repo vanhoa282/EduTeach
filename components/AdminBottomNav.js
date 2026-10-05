@@ -5,6 +5,7 @@ const TABS = [
   { key: 'dashboard', label: 'Tổng quan', icon: 'grid', iconOutline: 'grid-outline' },
   { key: 'orders', label: 'Đơn hàng', icon: 'card', iconOutline: 'card-outline' },
   { key: 'withdraws', label: 'Rút tiền', icon: 'arrow-up-circle', iconOutline: 'arrow-up-circle-outline' },
+  { key: 'tutors', label: 'Gia sư', icon: 'briefcase', iconOutline: 'briefcase-outline' },
   { key: 'users', label: 'Users', icon: 'people', iconOutline: 'people-outline' },
 ];
 
@@ -25,7 +26,7 @@ export default function AdminBottomNav({ activeTab, onChange, ordersCount = 0, w
             <View>
               <Ionicons
                 name={active ? tab.icon : tab.iconOutline}
-                size={24}
+                size={22}
                 color={active ? '#7C3AED' : '#9CA3AF'}
               />
               {badgeCount > 0 && (
@@ -46,7 +47,7 @@ const styles = StyleSheet.create({
   nav: {
     flexDirection: 'row', backgroundColor: '#fff',
     borderTopWidth: 1, borderTopColor: '#F3F4F6',
-    paddingTop: 8, paddingBottom: 12,
+    paddingTop: 8, paddingBottom: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05, shadowRadius: 8, elevation: 8,
   },
@@ -54,7 +55,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 10, color: '#9CA3AF', marginTop: 4, fontWeight: '500' },
   labelActive: { color: '#7C3AED', fontWeight: '700' },
   badge: {
-    position: 'absolute', top: -4, right: -8,
+    position: 'absolute', top: -6, right: -8,
     backgroundColor: '#EF4444', minWidth: 16, height: 16, borderRadius: 8,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
   },

@@ -23,10 +23,7 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
 
   const load = async () => {
     if (!user?.id) return;
-    const [w, wd] = await Promise.all([
-      getWallet(user.id),
-      getMyWithdraws(user.id),
-    ]);
+    const [w, wd] = await Promise.all([getWallet(user.id), getMyWithdraws(user.id)]);
     setWallet(w.wallet);
     setTransactions(w.transactions);
     setWithdraws(wd);
@@ -69,13 +66,6 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
           </View>
           <Text style={styles.balanceValue}>{(wallet.balance_available || 0).toLocaleString('vi-VN')}đ</Text>
 
-          <View style={styles.pendingRow}>
-            <Ionicons name="time-outline" size={14} color="#DBEAFE" />
-            <Text style={styles.pendingText}>
-              Đang chờ: <Text style={{ fontWeight: 'bold' }}>{(wallet.balance_pending || 0).toLocaleString('vi-VN')}đ</Text>
-            </Text>
-          </View>
-
           <View style={styles.balanceActions}>
             <TouchableOpacity
               style={styles.actionBtnPrimary}
@@ -97,13 +87,13 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
         </View>
 
         <View style={styles.infoRow}>
-          <View style={[styles.infoIconBox, { backgroundColor: '#FFFBEB' }]}>
-            <Ionicons name="information-circle" size={20} color="#F59E0B" />
+          <View style={[styles.infoIconBox, { backgroundColor: '#EFF6FF' }]}>
+            <Ionicons name="information-circle" size={20} color="#2563EB" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.infoTitle}>Tiền chờ 7 ngày</Text>
+            <Text style={styles.infoTitle}>Thu nhập vào ví ngay</Text>
             <Text style={styles.infoDesc}>
-              Tiền buổi học chuyển sang khả dụng sau 7 ngày (bảo vệ tranh chấp)
+              Khi HS xác nhận buổi học, tiền vào ví ngay. Admin có 7 ngày để kiểm tra nếu có khiếu nại.
             </Text>
           </View>
         </View>
@@ -133,7 +123,6 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
               <View style={styles.emptyBox}>
                 <Ionicons name="receipt-outline" size={48} color="#D1D5DB" />
                 <Text style={styles.emptyTitle}>Chưa có giao dịch</Text>
-                <Text style={styles.emptyDesc}>Thu nhập từ buổi dạy sẽ hiện ở đây</Text>
               </View>
             )}
             {transactions.map(tx => {
@@ -141,10 +130,7 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
               const isIncome = tx.amount > 0;
               return (
                 <View key={tx.id} style={styles.txCard}>
-                  <View style={[
-                    styles.txIconBox,
-                    { backgroundColor: isIncome ? '#F0FDF4' : '#FEF2F2' }
-                  ]}>
+                  <View style={[styles.txIconBox, { backgroundColor: isIncome ? '#F0FDF4' : '#FEF2F2' }]}>
                     <Ionicons name={cfg.icon} size={18} color={isIncome ? '#10B981' : '#EF4444'} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -168,7 +154,6 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
               <View style={styles.emptyBox}>
                 <Ionicons name="arrow-up-circle-outline" size={48} color="#D1D5DB" />
                 <Text style={styles.emptyTitle}>Chưa có yêu cầu rút</Text>
-                <Text style={styles.emptyDesc}>Bấm Rút tiền để tạo yêu cầu đầu tiên</Text>
               </View>
             )}
             {withdraws.map(w => {
@@ -188,9 +173,6 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
                     <Text style={styles.txTitle}>{w.amount.toLocaleString('vi-VN')}đ</Text>
                     <Text style={styles.txSub} numberOfLines={1}>
                       {w.bank_name} · {w.bank_account}
-                    </Text>
-                    <Text style={styles.txSubSmall}>
-                      {new Date(w.created_at).toLocaleString('vi-VN')}
                     </Text>
                   </View>
                   <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
@@ -227,8 +209,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   balanceValue: { fontSize: 30, fontWeight: 'bold', color: '#fff', marginTop: 6 },
-  pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  pendingText: { fontSize: 12, color: '#DBEAFE' },
   balanceActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
   actionBtnPrimary: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -264,7 +244,6 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#2563EB' },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { fontSize: 15, fontWeight: 'bold', color: '#111', marginTop: 12 },
-  emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
   txCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 8,
@@ -277,7 +256,6 @@ const styles = StyleSheet.create({
   },
   txTitle: { fontSize: 14, fontWeight: '600', color: '#111' },
   txSub: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  txSubSmall: { fontSize: 10, color: '#D1D5DB', marginTop: 2 },
   txAmount: { fontSize: 14, fontWeight: 'bold' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   statusText: { fontSize: 11, fontWeight: '600' },
