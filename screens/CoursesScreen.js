@@ -1,110 +1,151 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
-const STATUS_CONFIG = {
-  pending: { label: 'Chờ xác nhận', color: '#F59E0B', bg: '#FFFBEB', icon: 'time-outline' },
+const STATUS_CFG = {
+  pending_payment: { label: 'Chờ thanh toán', color: '#F59E0B', bg: '#FFFBEB', icon: 'time-outline' },
   active: { label: 'Đang học', color: '#2563EB', bg: '#EFF6FF', icon: 'play-circle-outline' },
   completed: { label: 'Hoàn thành', color: '#10B981', bg: '#F0FDF4', icon: 'checkmark-circle-outline' },
+  cancelled: { label: 'Đã huỷ', color: '#EF4444', bg: '#FEF2F2', icon: 'close-circle-outline' },
+  disputed: { label: 'Khiếu nại', color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle-outline' },
 };
 
-export default function CoursesScreen({ courses, onFindTutor }) {
-  if (!courses || courses.length === 0) {
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Khóa học của tôi</Text>
-        <Text style={styles.subtitle}>Các khóa học bạn đã đăng ký</Text>
+export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-        <View style={styles.emptyBox}>
-          <View style={styles.emptyIconBox}>
-            <Ionicons name="book-outline" size={48} color="#2563EB" />
-          </View>
-          <Text style={styles.emptyTitle}>Chưa có khóa học</Text>
-          <Text style={styles.emptyDesc}>Đăng ký khóa học đầu tiên để bắt đầu</Text>
-          <TouchableOpacity style={styles.btn} onPress={onFindTutor}>
-            <Ionicons name="search-outline" size={18} color="#fff" />
-            <Text style={styles.btnText}>Tìm gia sư ngay</Text>
-          </TouchableOpacity>
+  const load = async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('courses')
+      .select(`*, tutor:users!courses_tutor_id_fkey (id, full_name, phone)`)
+      .eq('student_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) setCourses(data);
+    else if (error) console.error('loadCourses:', error);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [user?.id]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#2563EB" />
         </View>
-      </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (courses.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <Text style={styles.title}>Khóa học của tôi</Text>
+          <Text style={styles.subtitle}>Các khóa học bạn đã đăng ký</Text>
+
+          <View style={styles.emptyBox}>
+            <View style={styles.emptyIconBox}>
+              <Ionicons name="book-outline" size={48} color="#2563EB" />
+            </View>
+            <Text style={styles.emptyTitle}>Chưa có khóa học</Text>
+            <Text style={styles.emptyDesc}>Đăng ký khóa học đầu tiên để bắt đầu</Text>
+            <TouchableOpacity style={styles.btn} onPress={onFindTutor}>
+              <Ionicons name="search-outline" size={18} color="#fff" />
+              <Text style={styles.btnText}>Tìm gia sư ngay</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Khóa học của tôi</Text>
-      <Text style={styles.subtitle}>{courses.length} khóa học đã đăng ký</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <Text style={styles.title}>Khóa học của tôi</Text>
+        <Text style={styles.subtitle}>{courses.length} khóa học đã đăng ký</Text>
 
-      {courses.map(course => {
-        const cfg = STATUS_CONFIG[course.status];
-        return (
-          <TouchableOpacity key={course.id} style={styles.courseCard} activeOpacity={0.7}>
-            <View style={styles.courseHeader}>
-              <View style={styles.tutorAvatarMini}>
-                <Ionicons name="person" size={22} color="#2563EB" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.courseTutorName}>{course.tutorName}</Text>
-                <Text style={styles.courseSubject}>{course.subject}</Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-                <Ionicons name={cfg.icon} size={12} color={cfg.color} />
-                <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
-              </View>
-            </View>
-
-            <View style={styles.courseDivider} />
-
-            <View style={styles.courseInfoRow}>
-              <View style={styles.courseInfoItem}>
-                <Ionicons name="book-outline" size={16} color="#9CA3AF" />
-                <Text style={styles.courseInfoLabel}>{course.totalSessions} buổi</Text>
-              </View>
-              <View style={styles.courseInfoItem}>
-                <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
-                <Text style={styles.courseInfoLabel}>{course.schedule}</Text>
-              </View>
-            </View>
-
-            {course.status === 'active' && (
-              <View style={styles.progressBox}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressLabel}>Tiến độ</Text>
-                  <Text style={styles.progressValue}>
-                    {course.completedSessions}/{course.totalSessions} buổi
-                  </Text>
+        {courses.map(course => {
+          const cfg = STATUS_CFG[course.status] || STATUS_CFG.pending_payment;
+          const tutorName = course.tutor?.full_name || 'Gia sư';
+          return (
+            <TouchableOpacity
+              key={course.id}
+              style={styles.courseCard}
+              onPress={() => onSelectCourse(course.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.courseHeader}>
+                <View style={styles.tutorAvatarMini}>
+                  <Ionicons name="person" size={22} color="#2563EB" />
                 </View>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${(course.completedSessions / course.totalSessions) * 100}%` },
-                    ]}
-                  />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.courseTutorName}>{tutorName}</Text>
+                  <Text style={styles.courseSubject}>{course.subject}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+                  <Ionicons name={cfg.icon} size={12} color={cfg.color} />
+                  <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
                 </View>
               </View>
-            )}
 
-            <View style={styles.courseFooter}>
-              <View>
-                <Text style={styles.coursePriceLabel}>Tổng tiền</Text>
-                <Text style={styles.coursePrice}>{course.total.toLocaleString('vi-VN')}đ</Text>
+              <View style={styles.courseDivider} />
+
+              <View style={styles.courseInfoRow}>
+                <View style={styles.courseInfoItem}>
+                  <Ionicons name="book-outline" size={16} color="#9CA3AF" />
+                  <Text style={styles.courseInfoLabel}>{course.total_sessions} buổi</Text>
+                </View>
+                {course.schedule && (
+                  <View style={styles.courseInfoItem}>
+                    <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
+                    <Text style={styles.courseInfoLabel}>{course.schedule}</Text>
+                  </View>
+                )}
               </View>
-              <TouchableOpacity style={styles.detailBtn}>
-                <Text style={styles.detailBtnText}>Xem chi tiết</Text>
-                <Ionicons name="chevron-forward" size={16} color="#2563EB" />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
 
-      <View style={{ height: 20 }} />
-    </ScrollView>
+              <View style={styles.courseFooter}>
+                <View>
+                  <Text style={styles.coursePriceLabel}>Tổng tiền</Text>
+                  <Text style={styles.coursePrice}>{course.total_price.toLocaleString('vi-VN')}đ</Text>
+                </View>
+                <View style={styles.detailBtn}>
+                  <Text style={styles.detailBtnText}>Chi tiết</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#2563EB" />
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
+  scroll: { flex: 1 },
   content: { padding: 20 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#111', marginBottom: 4 },
   subtitle: { fontSize: 14, color: '#666', marginBottom: 24 },
@@ -141,17 +182,6 @@ const styles = StyleSheet.create({
   courseInfoRow: { flexDirection: 'row', gap: 20, marginBottom: 12 },
   courseInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   courseInfoLabel: { fontSize: 13, color: '#6B7280' },
-  progressBox: { marginBottom: 14 },
-  progressHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 6,
-  },
-  progressLabel: { fontSize: 12, color: '#9CA3AF' },
-  progressValue: { fontSize: 12, color: '#2563EB', fontWeight: '600' },
-  progressBar: {
-    height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: '#2563EB', borderRadius: 3 },
   courseFooter: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6',

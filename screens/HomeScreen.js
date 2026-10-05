@@ -1,16 +1,59 @@
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { tutors, categories } from '../data/tutors';
+import { useState, useEffect } from 'react';
+import { getTutors } from '../lib/auth';
 
-export default function HomeScreen({ phone, onSelectTutor }) {
+const categories = [
+  { id: '1', name: 'Toán', icon: 'calculator-outline', color: '#3B82F6', bg: '#EFF6FF' },
+  { id: '2', name: 'Văn', icon: 'book-outline', color: '#8B5CF6', bg: '#F5F3FF' },
+  { id: '3', name: 'Anh', icon: 'language-outline', color: '#EF4444', bg: '#FEF2F2' },
+  { id: '4', name: 'Lý', icon: 'nuclear-outline', color: '#06B6D4', bg: '#ECFEFF' },
+  { id: '5', name: 'Hóa', icon: 'flask-outline', color: '#10B981', bg: '#ECFDF5' },
+  { id: '6', name: 'Tin', icon: 'laptop-outline', color: '#F59E0B', bg: '#FFFBEB' },
+  { id: '7', name: 'Sinh', icon: 'leaf-outline', color: '#22C55E', bg: '#F0FDF4' },
+];
+
+export default function HomeScreen({ user, onSelectTutor }) {
+  const [tutors, setTutors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const load = async () => {
+    const data = await getTutors();
+    setTutors(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  const filteredTutors = tutors.filter(t => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      (t.name || '').toLowerCase().includes(q) ||
+      (t.subject || '').toLowerCase().includes(q)
+    );
+  });
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Xin chào 👋</Text>
-            <Text style={styles.phone}>{phone || 'bạn'}</Text>
+            <Text style={styles.phone}>{user?.full_name || user?.phone || 'bạn'}</Text>
           </View>
           <TouchableOpacity style={styles.bellBtn}>
             <Ionicons name="notifications-outline" size={22} color="#111" />
@@ -25,8 +68,14 @@ export default function HomeScreen({ phone, onSelectTutor }) {
             style={styles.searchInput}
             placeholder="Tìm môn, lớp, gia sư..."
             placeholderTextColor="#9CA3AF"
+            value={search}
+            onChangeText={setSearch}
           />
-          <Ionicons name="options-outline" size={20} color="#2563EB" />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.sectionHeader}>
@@ -46,31 +95,46 @@ export default function HomeScreen({ phone, onSelectTutor }) {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Gia sư nổi bật</Text>
-          <Text style={styles.sectionMore}>Xem tất cả</Text>
+          <Text style={styles.sectionMore}>{filteredTutors.length} gia sư</Text>
         </View>
-        {tutors.map(tutor => (
-          <TouchableOpacity
-            key={tutor.id}
-            style={styles.tutorCard}
-            activeOpacity={0.7}
-            onPress={() => onSelectTutor && onSelectTutor(tutor)}
-          >
-            <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
-            <View style={styles.tutorInfo}>
-              <Text style={styles.tutorName}>{tutor.name}</Text>
-              <Text style={styles.tutorSubject}>{tutor.subject} · {tutor.experience}</Text>
-              <View style={styles.tutorMeta}>
-                <Ionicons name="star" size={13} color="#F59E0B" />
-                <Text style={styles.tutorRating}> {tutor.rating}</Text>
-                <Text style={styles.tutorReviews}>({tutor.reviews} đánh giá)</Text>
+
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#2563EB" />
+            <Text style={styles.loadingText}>Đang tải gia sư...</Text>
+          </View>
+        ) : filteredTutors.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="search-outline" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>Không tìm thấy gia sư</Text>
+            <Text style={styles.emptyDesc}>Thử tìm với từ khoá khác</Text>
+          </View>
+        ) : (
+          filteredTutors.map(tutor => (
+            <TouchableOpacity
+              key={tutor.id}
+              style={styles.tutorCard}
+              activeOpacity={0.7}
+              onPress={() => onSelectTutor(tutor)}
+            >
+              <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
+              <View style={styles.tutorInfo}>
+                <Text style={styles.tutorName}>{tutor.name}</Text>
+                <Text style={styles.tutorSubject}>{tutor.subject} · {tutor.experience}</Text>
+                <View style={styles.tutorMeta}>
+                  <Ionicons name="star" size={13} color="#F59E0B" />
+                  <Text style={styles.tutorRating}> {tutor.rating}</Text>
+                  <Text style={styles.tutorReviews}>({tutor.reviews} đánh giá)</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.tutorPriceBox}>
-              <Text style={styles.tutorPrice}>{(tutor.price / 1000).toFixed(0)}k</Text>
-              <Text style={styles.tutorPriceUnit}>/buổi</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View style={styles.tutorPriceBox}>
+                <Text style={styles.tutorPrice}>{(tutor.price / 1000).toFixed(0)}k</Text>
+                <Text style={styles.tutorPriceUnit}>/buổi</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+
         <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
@@ -107,6 +171,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 8,
   },
   categoryName: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  loadingBox: { alignItems: 'center', paddingVertical: 40 },
+  loadingText: { fontSize: 13, color: '#9CA3AF', marginTop: 12 },
+  emptyBox: { alignItems: 'center', paddingVertical: 40 },
+  emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginTop: 12 },
+  emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
   tutorCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
     borderRadius: 16, padding: 12, marginBottom: 12,

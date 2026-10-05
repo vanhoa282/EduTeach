@@ -16,7 +16,7 @@ const TIME_SLOTS = [
   { id: '4', label: 'T7, CN', sub: '14h - 16h' },
 ];
 
-export default function BookingScreen({ tutor, onBack, onSuccess }) {
+export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
   const [sessions, setSessions] = useState(10);
   const [timeSlot, setTimeSlot] = useState('1');
   const [paymentType, setPaymentType] = useState('full');
@@ -29,19 +29,27 @@ export default function BookingScreen({ tutor, onBack, onSuccess }) {
   const payLater = paymentType === 'half' ? total - payNow : 0;
 
   const handleConfirm = () => {
-    const booking = { sessions, total, payNow, payLater, paymentType };
+    const slot = TIME_SLOTS.find(s => s.id === timeSlot);
+    const booking = {
+      sessions,
+      total,
+      payNow,
+      payLater,
+      paymentType,
+      schedule: `${slot.label} · ${slot.sub}`,
+    };
     Alert.alert(
       'Xác nhận đăng ký',
       `Bạn đăng ký ${sessions} buổi với ${tutor.name}\nThanh toán: ${payNow.toLocaleString('vi-VN')}đ${paymentType === 'half' ? `\nCòn lại: ${payLater.toLocaleString('vi-VN')}đ` : ''}`,
       [
         { text: 'Huỷ', style: 'cancel' },
-        { text: 'Xác nhận', onPress: () => onSuccess && onSuccess(booking) },
+        { text: 'Xác nhận', onPress: () => onSuccess(booking) },
       ]
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />

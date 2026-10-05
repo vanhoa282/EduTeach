@@ -8,6 +8,7 @@ import ProfileScreen from './ProfileScreen';
 import TutorDetailScreen from './TutorDetailScreen';
 import BookingScreen from './BookingScreen';
 import PaymentScreen from './PaymentScreen';
+import CourseDetailScreen from './CourseDetailScreen';
 import AdminMainTabs from './AdminMainTabs';
 
 export default function MainTabs({ user, onLogout }) {
@@ -15,36 +16,36 @@ export default function MainTabs({ user, onLogout }) {
   const [selectedTutor, setSelectedTutor] = useState(null);
   const [bookingTutor, setBookingTutor] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
-  const [courses, setCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Admin mode
   if (showAdmin && user?.role === 'admin') {
     return <AdminMainTabs user={user} onBack={() => setShowAdmin(false)} onLogout={onLogout} />;
+  }
+
+  if (selectedCourseId) {
+    return (
+      <CourseDetailScreen
+        courseId={selectedCourseId}
+        onBack={() => { setSelectedCourseId(null); setRefreshKey(k => k + 1); }}
+      />
+    );
   }
 
   if (paymentInfo) {
     return (
       <PaymentScreen
+        user={user}
         tutor={paymentInfo.tutor}
         booking={paymentInfo.booking}
         onBack={() => setPaymentInfo(null)}
         onSuccess={() => {
-          const newCourse = {
-            id: Date.now().toString(),
-            tutorName: paymentInfo.tutor.name,
-            subject: paymentInfo.tutor.subject,
-            totalSessions: paymentInfo.booking.sessions,
-            completedSessions: 0,
-            schedule: 'T2, T4, T6 · 18h - 20h',
-            total: paymentInfo.booking.total,
-            status: 'pending',
-          };
-          setCourses([newCourse, ...courses]);
           setPaymentInfo(null);
           setBookingTutor(null);
           setSelectedTutor(null);
           setActiveTab('courses');
+          setRefreshKey(k => k + 1);
         }}
       />
     );
@@ -53,6 +54,7 @@ export default function MainTabs({ user, onLogout }) {
   if (bookingTutor) {
     return (
       <BookingScreen
+        user={user}
         tutor={bookingTutor}
         onBack={() => setBookingTutor(null)}
         onSuccess={(booking) => setPaymentInfo({ tutor: bookingTutor, booking })}
@@ -73,9 +75,14 @@ export default function MainTabs({ user, onLogout }) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {activeTab === 'home' && <HomeScreen phone={user?.phone} onSelectTutor={setSelectedTutor} />}
+        {activeTab === 'home' && <HomeScreen user={user} onSelectTutor={setSelectedTutor} />}
         {activeTab === 'courses' && (
-          <CoursesScreen courses={courses} onFindTutor={() => setActiveTab('home')} />
+          <CoursesScreen
+            key={refreshKey}
+            user={user}
+            onFindTutor={() => setActiveTab('home')}
+            onSelectCourse={setSelectedCourseId}
+          />
         )}
         {activeTab === 'notifications' && <NotificationsScreen />}
         {activeTab === 'profile' && (

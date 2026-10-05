@@ -1,22 +1,63 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
+import { getWallet, getMyWithdraws } from '../../lib/wallet';
 
-const TRANSACTIONS = [
-  { id: '1', type: 'income', title: 'Buổi dạy Toán 12', sub: 'Trần Minh Khang', amount: 180000, time: '2 giờ trước' },
-  { id: '2', type: 'income', title: 'Buổi dạy Toán 11', sub: 'Lê Thu Hà', amount: 162000, time: 'Hôm qua' },
-  { id: '3', type: 'withdraw', title: 'Rút tiền về ACB', sub: '25317541', amount: -500000, time: '2 ngày trước' },
-  { id: '4', type: 'income', title: 'Buổi dạy Toán 12', sub: 'Phạm Quốc Bảo', amount: 180000, time: '3 ngày trước' },
-  { id: '5', type: 'fee', title: 'Hoa hồng EduTeach', sub: '10% tháng 9', amount: -20000, time: '5 ngày trước' },
-];
+const TYPE_CFG = {
+  session_earning: { icon: 'arrow-down', income: true, label: 'Thu nhập buổi học' },
+  app_fee: { icon: 'receipt', income: false, label: 'Hoa hồng app' },
+  withdraw: { icon: 'arrow-up', income: false, label: 'Rút tiền' },
+  payout: { icon: 'arrow-up', income: false, label: 'Thanh toán' },
+  refund: { icon: 'arrow-down', income: true, label: 'Hoàn tiền' },
+  topup: { icon: 'arrow-down', income: true, label: 'Nạp tiền' },
+};
 
-export default function WalletScreen() {
-  const balance = 2340000;
-  const pending = 480000;
+export default function WalletScreen({ user, onOpenWithdraw }) {
+  const [wallet, setWallet] = useState({ balance_available: 0, balance_pending: 0 });
+  const [transactions, setTransactions] = useState([]);
+  const [withdraws, setWithdraws] = useState([]);
+  const [tab, setTab] = useState('transactions');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = async () => {
+    if (!user?.id) return;
+    const [w, wd] = await Promise.all([
+      getWallet(user.id),
+      getMyWithdraws(user.id),
+    ]);
+    setWallet(w.wallet);
+    setTransactions(w.transactions);
+    setWithdraws(wd);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [user?.id]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <Text style={styles.title}>Ví của tôi</Text>
 
         <View style={styles.balanceCard}>
@@ -26,23 +67,31 @@ export default function WalletScreen() {
               <Ionicons name="eye-outline" size={18} color="rgba(255,255,255,0.7)" />
             </View>
           </View>
-          <Text style={styles.balanceValue}>{balance.toLocaleString('vi-VN')}đ</Text>
+          <Text style={styles.balanceValue}>{(wallet.balance_available || 0).toLocaleString('vi-VN')}đ</Text>
 
           <View style={styles.pendingRow}>
             <Ionicons name="time-outline" size={14} color="#DBEAFE" />
             <Text style={styles.pendingText}>
-              Đang chờ: <Text style={{ fontWeight: 'bold' }}>{pending.toLocaleString('vi-VN')}đ</Text>
+              Đang chờ: <Text style={{ fontWeight: 'bold' }}>{(wallet.balance_pending || 0).toLocaleString('vi-VN')}đ</Text>
             </Text>
           </View>
 
           <View style={styles.balanceActions}>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Ionicons name="arrow-down-circle-outline" size={20} color="#fff" />
-              <Text style={styles.actionText}>Rút tiền</Text>
+            <TouchableOpacity
+              style={styles.actionBtnPrimary}
+              onPress={onOpenWithdraw}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-down-circle" size={20} color="#2563EB" />
+              <Text style={styles.actionTextPrimary}>Rút tiền</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => setTab('withdraws')}
+              activeOpacity={0.8}
+            >
               <Ionicons name="time-outline" size={20} color="#fff" />
-              <Text style={styles.actionText}>Lịch sử</Text>
+              <Text style={styles.actionText}>Lịch sử rút</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -52,45 +101,108 @@ export default function WalletScreen() {
             <Ionicons name="information-circle" size={20} color="#F59E0B" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.infoTitle}>Rút tiền trong 7 ngày</Text>
+            <Text style={styles.infoTitle}>Tiền chờ 7 ngày</Text>
             <Text style={styles.infoDesc}>
-              Tiền buổi học sẽ chờ 7 ngày trước khi khả dụng (bảo vệ tranh chấp)
+              Tiền buổi học chuyển sang khả dụng sau 7 ngày (bảo vệ tranh chấp)
             </Text>
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Giao dịch gần đây</Text>
+        <View style={styles.tabsRow}>
+          <TouchableOpacity
+            style={[styles.tabBtn, tab === 'transactions' && styles.tabBtnActive]}
+            onPress={() => setTab('transactions')}
+          >
+            <Text style={[styles.tabText, tab === 'transactions' && styles.tabTextActive]}>
+              Giao dịch
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabBtn, tab === 'withdraws' && styles.tabBtnActive]}
+            onPress={() => setTab('withdraws')}
+          >
+            <Text style={[styles.tabText, tab === 'withdraws' && styles.tabTextActive]}>
+              Rút tiền ({withdraws.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        {TRANSACTIONS.map(tx => {
-          const isIncome = tx.amount > 0;
-          return (
-            <View key={tx.id} style={styles.txCard}>
-              <View style={[
-                styles.txIconBox,
-                { backgroundColor: isIncome ? '#F0FDF4' : '#FEF2F2' }
-              ]}>
-                <Ionicons
-                  name={
-                    tx.type === 'income' ? 'arrow-down' :
-                    tx.type === 'withdraw' ? 'arrow-up' : 'receipt'
-                  }
-                  size={18}
-                  color={isIncome ? '#10B981' : '#EF4444'}
-                />
+        {tab === 'transactions' && (
+          <>
+            {transactions.length === 0 && (
+              <View style={styles.emptyBox}>
+                <Ionicons name="receipt-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyTitle}>Chưa có giao dịch</Text>
+                <Text style={styles.emptyDesc}>Thu nhập từ buổi dạy sẽ hiện ở đây</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.txTitle}>{tx.title}</Text>
-                <Text style={styles.txSub}>{tx.sub} · {tx.time}</Text>
+            )}
+            {transactions.map(tx => {
+              const cfg = TYPE_CFG[tx.type] || { icon: 'swap-horizontal', income: tx.amount > 0, label: tx.type };
+              const isIncome = tx.amount > 0;
+              return (
+                <View key={tx.id} style={styles.txCard}>
+                  <View style={[
+                    styles.txIconBox,
+                    { backgroundColor: isIncome ? '#F0FDF4' : '#FEF2F2' }
+                  ]}>
+                    <Ionicons name={cfg.icon} size={18} color={isIncome ? '#10B981' : '#EF4444'} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.txTitle}>{cfg.label}</Text>
+                    <Text style={styles.txSub} numberOfLines={1}>
+                      {tx.note || new Date(tx.created_at).toLocaleDateString('vi-VN')}
+                    </Text>
+                  </View>
+                  <Text style={[styles.txAmount, { color: isIncome ? '#10B981' : '#EF4444' }]}>
+                    {isIncome ? '+' : ''}{tx.amount.toLocaleString('vi-VN')}đ
+                  </Text>
+                </View>
+              );
+            })}
+          </>
+        )}
+
+        {tab === 'withdraws' && (
+          <>
+            {withdraws.length === 0 && (
+              <View style={styles.emptyBox}>
+                <Ionicons name="arrow-up-circle-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyTitle}>Chưa có yêu cầu rút</Text>
+                <Text style={styles.emptyDesc}>Bấm Rút tiền để tạo yêu cầu đầu tiên</Text>
               </View>
-              <Text style={[
-                styles.txAmount,
-                { color: isIncome ? '#10B981' : '#EF4444' }
-              ]}>
-                {isIncome ? '+' : ''}{tx.amount.toLocaleString('vi-VN')}đ
-              </Text>
-            </View>
-          );
-        })}
+            )}
+            {withdraws.map(w => {
+              const statusCfg = {
+                pending: { label: 'Chờ duyệt', color: '#F59E0B', bg: '#FFFBEB' },
+                processing: { label: 'Đang xử lý', color: '#2563EB', bg: '#EFF6FF' },
+                done: { label: 'Đã chuyển', color: '#10B981', bg: '#F0FDF4' },
+                rejected: { label: 'Từ chối', color: '#EF4444', bg: '#FEF2F2' },
+              }[w.status] || { label: w.status, color: '#6B7280', bg: '#F3F4F6' };
+
+              return (
+                <View key={w.id} style={styles.txCard}>
+                  <View style={[styles.txIconBox, { backgroundColor: statusCfg.bg }]}>
+                    <Ionicons name="arrow-up" size={18} color={statusCfg.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.txTitle}>{w.amount.toLocaleString('vi-VN')}đ</Text>
+                    <Text style={styles.txSub} numberOfLines={1}>
+                      {w.bank_name} · {w.bank_account}
+                    </Text>
+                    <Text style={styles.txSubSmall}>
+                      {new Date(w.created_at).toLocaleString('vi-VN')}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+                    <Text style={[styles.statusText, { color: statusCfg.color }]}>
+                      {statusCfg.label}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -118,10 +230,14 @@ const styles = StyleSheet.create({
   pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   pendingText: { fontSize: 12, color: '#DBEAFE' },
   balanceActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  actionBtnPrimary: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, backgroundColor: '#fff', paddingVertical: 12, borderRadius: 10,
+  },
+  actionTextPrimary: { color: '#2563EB', fontSize: 13, fontWeight: '700' },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 12, borderRadius: 10,
+    gap: 6, backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 12, borderRadius: 10,
   },
   actionText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   infoRow: {
@@ -136,7 +252,19 @@ const styles = StyleSheet.create({
   },
   infoTitle: { fontSize: 14, fontWeight: '600', color: '#111' },
   infoDesc: { fontSize: 12, color: '#6B7280', marginTop: 2, lineHeight: 17 },
-  sectionTitle: { fontSize: 17, fontWeight: 'bold', color: '#111', marginBottom: 12 },
+  tabsRow: {
+    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 12,
+    padding: 4, marginBottom: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
+  },
+  tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  tabBtnActive: { backgroundColor: '#EFF6FF' },
+  tabText: { fontSize: 13, color: '#9CA3AF', fontWeight: '600' },
+  tabTextActive: { color: '#2563EB' },
+  emptyBox: { alignItems: 'center', paddingVertical: 40 },
+  emptyTitle: { fontSize: 15, fontWeight: 'bold', color: '#111', marginTop: 12 },
+  emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
   txCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 8,
@@ -149,5 +277,8 @@ const styles = StyleSheet.create({
   },
   txTitle: { fontSize: 14, fontWeight: '600', color: '#111' },
   txSub: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  txSubSmall: { fontSize: 10, color: '#D1D5DB', marginTop: 2 },
   txAmount: { fontSize: 14, fontWeight: 'bold' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusText: { fontSize: 11, fontWeight: '600' },
 });
