@@ -1,8 +1,69 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
+import { getTutorReviews, getRatingStats, maskName } from '../lib/reviews';
 
 export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat }) {
+  const [reviews, setReviews] = useState([]);
+  const [stats, setStats] = useState({ 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, total: 0, avg: 0 });
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [filterStar, setFilterStar] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      const data = await getTutorReviews(tutor.id);
+      setReviews(data);
+      setStats(getRatingStats(data));
+      setLoadingReviews(false);
+    })();
+  }, [tutor.id]);
+
+  const filteredReviews = filterStar === 0
+    ? reviews
+    : reviews.filter(r => Math.round(r.rating) === filterStar);
+
+  const displayRating = stats.total > 0 ? stats.avg.toFixed(1) : (tutor.rating || 0);
+  const displayCount = stats.total > 0 ? stats.total : (tutor.reviews || 0);
+
+  const formatDate = (iso) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return 'Vừa xong';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} ngày trước`;
+    return d.toLocaleDateString('vi-VN');
+  };
+
+  const StarRow = ({ value, size = 14 }) => (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Ionicons
+          key={i}
+          name={i <= value ? 'star' : 'star-outline'}
+          size={size}
+          color="#F59E0B"
+        />
+      ))}
+    </View>
+  );
+
+  const renderBar = (star) => {
+    const count = stats[star] || 0;
+    const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
+    return (
+      <View key={star} style={styles.barRow}>
+        <Text style={styles.barLabel}>{star} ★</Text>
+        <View style={styles.barTrack}>
+          <View style={[styles.barFill, { width: `${pct}%` }]} />
+        </View>
+        <Text style={styles.barCount}>{count}</Text>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
@@ -16,6 +77,7 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {/* Profile */}
         <View style={styles.profileBox}>
           <Image source={{ uri: tutor.avatar }} style={styles.avatar} />
           <Text style={styles.name}>{tutor.name}</Text>
@@ -25,9 +87,9 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
             <View style={styles.statBox}>
               <View style={styles.statTop}>
                 <Ionicons name="star" size={16} color="#F59E0B" />
-                <Text style={styles.statValue}> {tutor.rating}</Text>
+                <Text style={styles.statValue}> {displayRating}</Text>
               </View>
-              <Text style={styles.statLabel}>{tutor.reviews} đánh giá</Text>
+              <Text style={styles.statLabel}>{displayCount} đánh giá</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.statBox}>
@@ -42,6 +104,7 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
           </View>
         </View>
 
+        {/* Giới thiệu */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Giới thiệu</Text>
           <Text style={styles.sectionText}>
@@ -49,6 +112,7 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
           </Text>
         </View>
 
+        {/* Chuyên môn */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Chuyên môn</Text>
           <View style={styles.tagsRow}>
@@ -60,6 +124,7 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
           </View>
         </View>
 
+        {/* Lịch dạy */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Lịch dạy</Text>
           <View style={styles.scheduleBox}>
@@ -72,9 +137,111 @@ export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat 
           </View>
         </View>
 
+        {/* Đánh giá */}
+        <View style={styles.section}>
+          <View style={styles.reviewHeaderRow}>
+            <Text style={styles.sectionTitle}>Đánh giá ({stats.total})</Text>
+          </View>
+
+          {loadingReviews ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator color="#2563EB" />
+            </View>
+          ) : stats.total === 0 ? (
+            <View style={styles.emptyReviews}>
+              <Ionicons name="chatbubble-outline" size={36} color="#D1D5DB" />
+              <Text style={styles.emptyReviewText}>Chưa có đánh giá nào</Text>
+              <Text style={styles.emptyReviewDesc}>Hãy là người đầu tiên đánh giá gia sư này</Text>
+            </View>
+          ) : (
+            <>
+              {/* Summary */}
+              <View style={styles.summaryBox}>
+                <View style={styles.summaryLeft}>
+                  <Text style={styles.bigAvg}>{stats.avg.toFixed(1)}</Text>
+                  <StarRow value={Math.round(stats.avg)} size={16} />
+                  <Text style={styles.summaryCount}>{stats.total} đánh giá</Text>
+                </View>
+                <View style={styles.summaryRight}>
+                  {[5, 4, 3, 2, 1].map(renderBar)}
+                </View>
+              </View>
+
+              {/* Filter chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterChips}
+              >
+                <TouchableOpacity
+                  style={[styles.chip, filterStar === 0 && styles.chipActive]}
+                  onPress={() => setFilterStar(0)}
+                >
+                  <Text style={[styles.chipText, filterStar === 0 && styles.chipTextActive]}>
+                    Tất cả ({stats.total})
+                  </Text>
+                </TouchableOpacity>
+                {[5, 4, 3, 2, 1].map(s => {
+                  const c = stats[s] || 0;
+                  if (c === 0) return null;
+                  return (
+                    <TouchableOpacity
+                      key={s}
+                      style={[styles.chip, filterStar === s && styles.chipActive]}
+                      onPress={() => setFilterStar(s)}
+                    >
+                      <Text style={[styles.chipText, filterStar === s && styles.chipTextActive]}>
+                        {s} ★ ({c})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Reviews list */}
+              {filteredReviews.length === 0 ? (
+                <Text style={styles.noMatchText}>Không có đánh giá {filterStar} sao</Text>
+              ) : (
+                filteredReviews.map(r => (
+                  <View key={r.id} style={styles.reviewCard}>
+                    <View style={styles.reviewTop}>
+                      <View style={styles.reviewAvatar}>
+                        <Text style={styles.reviewAvatarText}>
+                          {(r.student?.full_name || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.reviewName}>
+                          {maskName(r.student?.full_name)}
+                        </Text>
+                        <View style={styles.reviewMeta}>
+                          <StarRow value={Math.round(r.rating)} size={12} />
+                          <Text style={styles.reviewTime}>{formatDate(r.created_at)}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    {r.comment && (
+                      <Text style={styles.reviewComment}>{r.comment}</Text>
+                    )}
+                    {r.subject && (
+                      <View style={styles.reviewTagRow}>
+                        <Ionicons name="book-outline" size={11} color="#9CA3AF" />
+                        <Text style={styles.reviewTagText}>
+                          {r.subject} · Buổi {r.session_number}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+            </>
+          )}
+        </View>
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* Bottom bar */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.chatBtn}
@@ -143,6 +310,61 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   scheduleText: { fontSize: 14, color: '#4B5563' },
+
+  reviewHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  emptyReviews: { alignItems: 'center', paddingVertical: 24 },
+  emptyReviewText: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginTop: 8 },
+  emptyReviewDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
+
+  summaryBox: {
+    flexDirection: 'row', backgroundColor: '#F9FAFB', borderRadius: 14,
+    padding: 16, marginBottom: 12, gap: 16,
+  },
+  summaryLeft: { alignItems: 'center', justifyContent: 'center', width: 100 },
+  bigAvg: { fontSize: 36, fontWeight: 'bold', color: '#F59E0B' },
+  summaryCount: { fontSize: 11, color: '#9CA3AF', marginTop: 4 },
+  summaryRight: { flex: 1, justifyContent: 'center', gap: 4 },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barLabel: { fontSize: 11, color: '#6B7280', width: 22 },
+  barTrack: { flex: 1, height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' },
+  barFill: { height: '100%', backgroundColor: '#F59E0B', borderRadius: 3 },
+  barCount: { fontSize: 11, color: '#9CA3AF', width: 24, textAlign: 'right' },
+
+  filterChips: { gap: 8, paddingVertical: 4, marginBottom: 12 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: 'transparent',
+  },
+  chipActive: { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
+  chipText: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  chipTextActive: { color: '#2563EB' },
+
+  noMatchText: {
+    fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 16,
+  },
+
+  reviewCard: {
+    backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 8,
+  },
+  reviewTop: { flexDirection: 'row', gap: 10 },
+  reviewAvatar: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#2563EB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reviewAvatarText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  reviewName: { fontSize: 14, fontWeight: '600', color: '#111' },
+  reviewMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  reviewTime: { fontSize: 11, color: '#9CA3AF' },
+  reviewComment: {
+    fontSize: 13, color: '#4B5563', lineHeight: 20,
+    marginTop: 10, paddingLeft: 46,
+  },
+  reviewTagRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 8, paddingLeft: 46,
+  },
+  reviewTagText: { fontSize: 11, color: '#9CA3AF' },
+
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', gap: 10,

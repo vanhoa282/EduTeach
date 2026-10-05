@@ -14,11 +14,17 @@ import CourseDetailScreen from './CourseDetailScreen';
 import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
 import AdminMainTabs from './AdminMainTabs';
+import EditProfileScreen from './profile/EditProfileScreen';
+import ChangePasswordScreen from './profile/ChangePasswordScreen';
+import BankScreen from './profile/BankScreen';
+import SupportScreen from './profile/SupportScreen';
+import TermsScreen from './profile/TermsScreen';
 import { getOrCreateConversation, getUnreadCount } from '../lib/chat';
 import { getNotifUnreadCount } from '../lib/notif';
 import { supabase } from '../lib/supabase';
 
-export default function MainTabs({ user, onLogout }) {
+export default function MainTabs({ user: initialUser, onLogout }) {
+  const [user, setUser] = useState(initialUser);
   const [activeTab, setActiveTab] = useState('home');
   const [selectedTutor, setSelectedTutor] = useState(null);
   const [bookingTutor, setBookingTutor] = useState(null);
@@ -27,6 +33,7 @@ export default function MainTabs({ user, onLogout }) {
   const [selectedNotif, setSelectedNotif] = useState(null);
   const [allTutorsFilter, setAllTutorsFilter] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [profileScreen, setProfileScreen] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeConv, setActiveConv] = useState(null);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
@@ -62,9 +69,28 @@ export default function MainTabs({ user, onLogout }) {
     };
   }, [user?.id]);
 
-  useEffect(() => {
-    if (!activeConv) loadCounts();
-  }, [activeConv, activeTab]);
+  // Profile sub-screens
+  if (profileScreen === 'edit-profile') {
+    return (
+      <EditProfileScreen
+        user={user}
+        onBack={() => setProfileScreen(null)}
+        onSaved={(u) => { setUser(u); setProfileScreen(null); }}
+      />
+    );
+  }
+  if (profileScreen === 'change-password') {
+    return <ChangePasswordScreen user={user} onBack={() => setProfileScreen(null)} />;
+  }
+  if (profileScreen === 'bank') {
+    return <BankScreen user={user} onBack={() => setProfileScreen(null)} />;
+  }
+  if (profileScreen === 'support') {
+    return <SupportScreen onBack={() => setProfileScreen(null)} />;
+  }
+  if (profileScreen === 'terms') {
+    return <TermsScreen onBack={() => setProfileScreen(null)} />;
+  }
 
   if (showAdmin && user?.role === 'admin') {
     return <AdminMainTabs user={user} onBack={() => setShowAdmin(false)} onLogout={onLogout} />;
@@ -88,7 +114,6 @@ export default function MainTabs({ user, onLogout }) {
         onAction={(action) => {
           setSelectedNotif(null);
           if (action.screen === 'courses') setActiveTab('courses');
-          else if (action.screen === 'wallet') setActiveTab('profile');
           loadCounts();
         }}
       />
@@ -102,10 +127,7 @@ export default function MainTabs({ user, onLogout }) {
         initialCategory={allTutorsFilter.category}
         initialSearch={allTutorsFilter.search}
         onBack={() => setAllTutorsFilter(null)}
-        onSelectTutor={(t) => {
-          setAllTutorsFilter(null);
-          setSelectedTutor(t);
-        }}
+        onSelectTutor={(t) => { setAllTutorsFilter(null); setSelectedTutor(t); }}
       />
     );
   }
@@ -185,11 +207,7 @@ export default function MainTabs({ user, onLogout }) {
           />
         )}
         {activeTab === 'notifications' && (
-          <NotificationsScreen
-            user={user}
-            onRefresh={loadCounts}
-            onOpenNotif={setSelectedNotif}
-          />
+          <NotificationsScreen user={user} onRefresh={loadCounts} onOpenNotif={setSelectedNotif} />
         )}
         {activeTab === 'messages' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
         {activeTab === 'profile' && (
@@ -197,6 +215,7 @@ export default function MainTabs({ user, onLogout }) {
             user={user}
             onLogout={onLogout}
             onOpenAdmin={() => setShowAdmin(true)}
+            onOpenScreen={setProfileScreen}
           />
         )}
       </View>

@@ -2,26 +2,39 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ProfileScreen({ user, onLogout, onOpenAdmin }) {
+export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScreen }) {
   const isAdmin = user?.role === 'admin';
 
   const items = [
-    { icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
-    { icon: 'card-outline', label: 'Phương thức thanh toán', color: '#10B981' },
-    { icon: 'lock-closed-outline', label: 'Bảo mật', color: '#8B5CF6' },
-    { icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#F59E0B' },
-    { icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
+    { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
+    { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#10B981' },
+    { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#8B5CF6' },
+    { key: 'support', icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#F59E0B' },
+    { key: 'terms', icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
   ];
+
+  const handleItem = (key) => {
+    if (onOpenScreen) onOpenScreen(key);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatarBox}>
-            <Ionicons name={isAdmin ? 'shield-checkmark' : 'person'} size={40} color={isAdmin ? '#7C3AED' : '#2563EB'} />
+            <Ionicons
+              name={isAdmin ? 'shield-checkmark' : 'person'}
+              size={40}
+              color={isAdmin ? '#7C3AED' : '#2563EB'}
+            />
           </View>
           <Text style={styles.name}>{user?.full_name || user?.phone}</Text>
-          <Text style={styles.role}>{isAdmin ? 'Quản trị viên' : 'Khách hàng'}</Text>
+          <Text style={styles.phone}>{user?.phone}</Text>
+          <View style={[styles.roleBadge, { backgroundColor: isAdmin ? '#F5F3FF' : '#EFF6FF' }]}>
+            <Text style={[styles.roleText, { color: isAdmin ? '#7C3AED' : '#2563EB' }]}>
+              {isAdmin ? 'Quản trị viên' : 'Khách hàng'}
+            </Text>
+          </View>
         </View>
 
         {isAdmin && (
@@ -44,9 +57,10 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin }) {
         <View style={styles.menu}>
           {items.map((item, idx) => (
             <TouchableOpacity
-              key={idx}
+              key={item.key}
               style={[styles.menuItem, idx === items.length - 1 && styles.menuItemLast]}
               activeOpacity={0.7}
+              onPress={() => handleItem(item.key)}
             >
               <View style={[styles.menuIconBox, { backgroundColor: item.color + '15' }]}>
                 <Ionicons name={item.icon} size={20} color={item.color} />
@@ -75,7 +89,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
   },
   name: { fontSize: 20, fontWeight: 'bold', color: '#111' },
-  role: { fontSize: 14, color: '#666', marginTop: 4 },
+  phone: { fontSize: 14, color: '#6B7280', marginTop: 4 },
+  roleBadge: {
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, marginTop: 8,
+  },
+  roleText: { fontSize: 12, fontWeight: '600' },
   adminBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#7C3AED', borderRadius: 16, padding: 16, marginBottom: 16,
