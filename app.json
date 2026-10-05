@@ -7,16 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "eduteach",
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#2563EB"
-        }
-      ],
-      "expo-font"
-    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vanhoa282.eduteach"
@@ -28,11 +18,7 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "permissions": [
-        "NOTIFICATIONS",
-        "VIBRATE"
-      ]
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
