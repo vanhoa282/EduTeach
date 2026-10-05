@@ -2,9 +2,9 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function TutorDetailScreen({ tutor, onBack, onBook }) {
+export default function TutorDetailScreen({ user, tutor, onBack, onBook, onChat }) {
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />
@@ -45,9 +45,7 @@ export default function TutorDetailScreen({ tutor, onBack, onBook }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Giới thiệu</Text>
           <Text style={styles.sectionText}>
-            Gia sư nhiệt tình, có {tutor.experience} kinh nghiệm giảng dạy môn {tutor.subject}.
-            Phương pháp dạy dễ hiểu, tận tâm với học sinh, giúp học sinh tiến bộ rõ rệt
-            sau mỗi buổi học.
+            {tutor.bio || `Gia sư nhiệt tình, có ${tutor.experience} kinh nghiệm giảng dạy môn ${tutor.subject}. Phương pháp dạy dễ hiểu, tận tâm với học sinh.`}
           </Text>
         </View>
 
@@ -78,11 +76,14 @@ export default function TutorDetailScreen({ tutor, onBack, onBook }) {
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        <View>
-          <Text style={styles.priceSmallLabel}>Giá mỗi buổi</Text>
-          <Text style={styles.priceBig}>{tutor.price.toLocaleString('vi-VN')}đ</Text>
-        </View>
-        <TouchableOpacity style={styles.bookBtn} onPress={() => onBook && onBook(tutor)}>
+        <TouchableOpacity
+          style={styles.chatBtn}
+          onPress={() => onChat(tutor)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chatbubble-ellipses" size={22} color="#2563EB" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bookBtn} onPress={() => onBook(tutor)}>
           <Text style={styles.bookBtnText}>Đăng ký học</Text>
           <Ionicons name="arrow-forward" size={18} color="#fff" />
         </TouchableOpacity>
@@ -108,8 +109,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', backgroundColor: '#fff',
     paddingVertical: 28, paddingHorizontal: 20,
     borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
   avatar: {
     width: 100, height: 100, borderRadius: 50, marginBottom: 12,
@@ -130,8 +129,6 @@ const styles = StyleSheet.create({
   section: {
     backgroundColor: '#fff', marginTop: 12, paddingHorizontal: 20, paddingVertical: 18,
     marginHorizontal: 16, borderRadius: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
   },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginBottom: 10 },
   sectionText: { fontSize: 14, color: '#4B5563', lineHeight: 22 },
@@ -148,18 +145,17 @@ const styles = StyleSheet.create({
   scheduleText: { fontSize: 14, color: '#4B5563' },
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#fff', paddingHorizontal: 20, paddingVertical: 16,
     borderTopWidth: 1, borderTopColor: '#F3F4F6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 8,
   },
-  priceSmallLabel: { fontSize: 12, color: '#9CA3AF' },
-  priceBig: { fontSize: 20, fontWeight: 'bold', color: '#2563EB' },
+  chatBtn: {
+    width: 54, height: 54, borderRadius: 27, backgroundColor: '#EFF6FF',
+    alignItems: 'center', justifyContent: 'center',
+  },
   bookBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#2563EB', paddingHorizontal: 22, paddingVertical: 14,
-    borderRadius: 12,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#2563EB', paddingVertical: 16, borderRadius: 12,
   },
   bookBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
