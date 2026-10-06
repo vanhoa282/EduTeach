@@ -1,8 +1,9 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { CourseCardSkeleton } from '../components/Skeleton';
 
 const STATUS_CFG = {
   pending_payment: { label: 'Chờ thanh toán', color: '#F59E0B', bg: '#FFFBEB', icon: 'time-outline' },
@@ -18,10 +19,7 @@ export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
-    if (!user?.id) {
-      setLoading(false);
-      return;
-    }
+    if (!user?.id) { setLoading(false); return; }
     const { data, error } = await supabase
       .from('courses')
       .select(`*, tutor:users!courses_tutor_id_fkey (id, full_name, phone)`)
@@ -29,7 +27,6 @@ export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
       .order('created_at', { ascending: false });
 
     if (!error && data) setCourses(data);
-    else if (error) console.error('loadCourses:', error);
     setLoading(false);
   };
 
@@ -44,9 +41,12 @@ export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color="#2563EB" />
-        </View>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>Khóa học của tôi</Text>
+          <Text style={styles.subtitle}>Đang tải...</Text>
+          <CourseCardSkeleton />
+          <CourseCardSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -92,7 +92,7 @@ export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
               key={course.id}
               style={styles.courseCard}
               onPress={() => onSelectCourse(course.id)}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
             >
               <View style={styles.courseHeader}>
                 <View style={styles.tutorAvatarMini}>
@@ -147,37 +147,37 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   scroll: { flex: 1 },
   content: { padding: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#111', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#666', marginBottom: 24 },
+  title: { fontSize: 28, fontWeight: '800', color: '#111', marginBottom: 6, letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, color: '#6B7280', marginBottom: 24 },
   emptyBox: { alignItems: 'center', paddingVertical: 60 },
   emptyIconBox: {
     width: 100, height: 100, borderRadius: 50, backgroundColor: '#EFF6FF',
     alignItems: 'center', justifyContent: 'center', marginBottom: 20,
   },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#111', marginBottom: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#111', marginBottom: 8 },
   emptyDesc: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 24 },
   btn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#2563EB', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12,
+    backgroundColor: '#2563EB', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14,
   },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   courseCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 14,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07, shadowRadius: 12, elevation: 3,
   },
   courseHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   tutorAvatarMini: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: '#EFF6FF',
+    width: 46, height: 46, borderRadius: 23, backgroundColor: '#EFF6FF',
     alignItems: 'center', justifyContent: 'center',
   },
-  courseTutorName: { fontSize: 15, fontWeight: 'bold', color: '#111' },
+  courseTutorName: { fontSize: 16, fontWeight: '800', color: '#111' },
   courseSubject: { fontSize: 13, color: '#666', marginTop: 2 },
   statusBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
   },
-  statusText: { fontSize: 11, fontWeight: '600' },
+  statusText: { fontSize: 11, fontWeight: '700' },
   courseDivider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 14 },
   courseInfoRow: { flexDirection: 'row', gap: 20, marginBottom: 12 },
   courseInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6',
   },
-  coursePriceLabel: { fontSize: 11, color: '#9CA3AF' },
-  coursePrice: { fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginTop: 2 },
+  coursePriceLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
+  coursePrice: { fontSize: 16, fontWeight: '800', color: '#2563EB', marginTop: 2 },
   detailBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  detailBtnText: { fontSize: 13, color: '#2563EB', fontWeight: '600' },
+  detailBtnText: { fontSize: 13, color: '#2563EB', fontWeight: '700' },
 });

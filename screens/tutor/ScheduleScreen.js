@@ -1,9 +1,10 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import AnnouncementBanner from '../../components/AnnouncementBanner';
+import { SessionCardSkeleton } from '../../components/Skeleton';
 
 const STATUS_CFG = {
   pending: { label: 'Sắp dạy', color: '#2563EB', bg: '#EFF6FF' },
@@ -83,16 +84,6 @@ export default function ScheduleScreen({ user }) {
     .filter(s => s.status === 'confirmed')
     .reduce((sum, s) => sum + (s.tutor_payout || 0), 0);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color="#2563EB" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
@@ -154,10 +145,15 @@ export default function ScheduleScreen({ user }) {
           {filter === 'today' ? 'Buổi học hôm nay' :
            filter === 'week' ? 'Buổi học tuần này' :
            filter === 'done' ? 'Buổi đã dạy' : 'Tất cả buổi học'}
-          {' '}({filtered.length})
         </Text>
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <>
+            <SessionCardSkeleton />
+            <SessionCardSkeleton />
+            <SessionCardSkeleton />
+          </>
+        ) : filtered.length === 0 ? (
           <View style={styles.emptyBox}>
             <Ionicons name="calendar-outline" size={48} color="#D1D5DB" />
             <Text style={styles.emptyTitle}>
@@ -213,47 +209,47 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   content: { padding: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  greeting: { fontSize: 14, color: '#666' },
-  name: { fontSize: 20, fontWeight: 'bold', color: '#111', marginTop: 2 },
+  greeting: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  name: { fontSize: 20, fontWeight: '800', color: '#111', marginTop: 4, letterSpacing: -0.3 },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   statBox: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07, shadowRadius: 10, elevation: 3,
   },
   statIconBox: {
     width: 36, height: 36, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  statValue: { fontSize: 20, fontWeight: 'bold', color: '#111' },
-  statLabel: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
-  filterRow: { gap: 8, paddingBottom: 12 },
+  statValue: { fontSize: 22, fontWeight: '800', color: '#111' },
+  statLabel: { fontSize: 11, color: '#9CA3AF', marginTop: 2, fontWeight: '500' },
+  filterRow: { gap: 8, paddingBottom: 14 },
   filterChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
     backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB',
   },
   filterChipActive: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
   filterChipText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-  filterChipTextActive: { color: '#fff' },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginBottom: 12 },
+  filterChipTextActive: { color: '#fff', fontWeight: '700' },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#111', marginBottom: 14 },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { fontSize: 14, color: '#9CA3AF', marginTop: 12, textAlign: 'center' },
   sessionCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#fff', borderRadius: 16, padding: 12, marginBottom: 10,
+    backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    shadowOpacity: 0.06, shadowRadius: 10, elevation: 2,
   },
   sessionNumber: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: '#EFF6FF',
+    width: 46, height: 46, borderRadius: 14, backgroundColor: '#EFF6FF',
     alignItems: 'center', justifyContent: 'center',
   },
-  sessionNumberText: { fontSize: 18, fontWeight: 'bold', color: '#2563EB' },
-  sessionName: { fontSize: 15, fontWeight: 'bold', color: '#111' },
+  sessionNumberText: { fontSize: 18, fontWeight: '800', color: '#2563EB' },
+  sessionName: { fontSize: 15, fontWeight: '700', color: '#111' },
   sessionSubject: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   sessionMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 },
   sessionMetaText: { fontSize: 12, color: '#9CA3AF' },
   sessionDot: { color: '#D1D5DB' },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  statusText: { fontSize: 11, fontWeight: '600' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  statusText: { fontSize: 11, fontWeight: '700' },
 });

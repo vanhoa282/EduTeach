@@ -1,9 +1,10 @@
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { getTutors } from '../lib/auth';
 import AnnouncementBanner from '../components/AnnouncementBanner';
+import { TutorCardSkeleton } from '../components/Skeleton';
 
 const categories = [
   { id: 'all', name: 'Tất cả', icon: 'apps-outline', color: '#6B7280', bg: '#F3F4F6' },
@@ -66,9 +67,9 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Xin chào 👋</Text>
-            <Text style={styles.phone}>{user?.full_name || user?.phone || 'bạn'}</Text>
+            <Text style={styles.username}>{user?.full_name || user?.phone || 'bạn'}</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn} onPress={handleSeeAll}>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleSeeAll}>
             <Ionicons name="search" size={22} color="#111" />
           </TouchableOpacity>
         </View>
@@ -123,7 +124,7 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
                 >
                   <Ionicons name={cat.icon} size={26} color={cat.color} />
                 </View>
-                <Text style={[styles.categoryName, active && { color: cat.color, fontWeight: 'bold' }]}>
+                <Text style={[styles.categoryName, active && { color: cat.color, fontWeight: '700' }]}>
                   {cat.name}
                 </Text>
               </TouchableOpacity>
@@ -141,9 +142,11 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
         </View>
 
         {loading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color="#2563EB" />
-          </View>
+          <>
+            <TutorCardSkeleton />
+            <TutorCardSkeleton />
+            <TutorCardSkeleton />
+          </>
         ) : filteredTutors.length === 0 ? (
           <View style={styles.emptyBox}>
             <Ionicons name="search-outline" size={48} color="#D1D5DB" />
@@ -159,7 +162,7 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
             <TouchableOpacity
               key={tutor.id}
               style={styles.tutorCard}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
               onPress={() => onSelectTutor(tutor)}
             >
               <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
@@ -198,56 +201,57 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   scrollContent: { paddingHorizontal: 20, paddingTop: 10 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  greeting: { fontSize: 14, color: '#666' },
-  phone: { fontSize: 18, fontWeight: 'bold', color: '#111', marginTop: 2 },
-  bellBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff',
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  greeting: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  username: { fontSize: 20, fontWeight: '800', color: '#111', marginTop: 4, letterSpacing: -0.3 },
+  iconBtn: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08, shadowRadius: 10, elevation: 3,
   },
-  hero: { fontSize: 26, fontWeight: 'bold', color: '#111', lineHeight: 34, marginBottom: 20 },
+  hero: { fontSize: 28, fontWeight: '800', color: '#111', lineHeight: 36, marginBottom: 22, letterSpacing: -0.5 },
   searchBox: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, gap: 10,
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 26,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07, shadowRadius: 12, elevation: 3, gap: 10,
   },
   searchInput: { flex: 1, fontSize: 15, color: '#111', padding: 0 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111' },
-  sectionMore: { fontSize: 13, color: '#2563EB', fontWeight: '600' },
-  categoriesContent: { paddingRight: 20, marginBottom: 24 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  sectionTitle: { fontSize: 19, fontWeight: '800', color: '#111', letterSpacing: -0.2 },
+  sectionMore: { fontSize: 13, color: '#2563EB', fontWeight: '700' },
+  categoriesContent: { paddingRight: 20, marginBottom: 26 },
   categoryCard: { alignItems: 'center', marginRight: 14, width: 68 },
   categoryIconBox: {
-    width: 60, height: 60, borderRadius: 18,
+    width: 62, height: 62, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
   },
   categoryName: { fontSize: 12, color: '#374151', fontWeight: '600' },
-  loadingBox: { alignItems: 'center', paddingVertical: 40 },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginTop: 12 },
   emptyDesc: { fontSize: 13, color: '#9CA3AF', marginTop: 4, textAlign: 'center' },
   tutorCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 16, padding: 12, marginBottom: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    borderRadius: 18, padding: 14, marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07, shadowRadius: 12, elevation: 3,
   },
-  tutorAvatar: { width: 60, height: 60, borderRadius: 30, marginRight: 12, backgroundColor: '#E5E7EB' },
+  tutorAvatar: { width: 62, height: 62, borderRadius: 31, marginRight: 14, backgroundColor: '#E5E7EB' },
   tutorInfo: { flex: 1 },
-  tutorName: { fontSize: 15, fontWeight: 'bold', color: '#111', marginBottom: 2 },
-  tutorSubject: { fontSize: 13, color: '#666', marginBottom: 4 },
+  tutorName: { fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 4, letterSpacing: -0.2 },
+  tutorSubject: { fontSize: 13, color: '#6B7280', marginBottom: 6 },
   tutorMeta: { flexDirection: 'row', alignItems: 'center' },
-  tutorRating: { fontSize: 13, color: '#F59E0B', fontWeight: '600' },
+  tutorRating: { fontSize: 13, color: '#F59E0B', fontWeight: '700' },
   tutorReviews: { fontSize: 12, color: '#9CA3AF', marginLeft: 4 },
   tutorPriceBox: { alignItems: 'flex-end' },
-  tutorPrice: { fontSize: 18, fontWeight: 'bold', color: '#2563EB' },
+  tutorPrice: { fontSize: 19, fontWeight: '800', color: '#2563EB', letterSpacing: -0.3 },
   tutorPriceUnit: { fontSize: 11, color: '#9CA3AF' },
   seeMoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 14, backgroundColor: '#EFF6FF', borderRadius: 12, marginTop: 4,
+    paddingVertical: 16, backgroundColor: '#EFF6FF', borderRadius: 14, marginTop: 4,
   },
-  seeMoreText: { fontSize: 14, color: '#2563EB', fontWeight: '600' },
+  seeMoreText: { fontSize: 14, color: '#2563EB', fontWeight: '700' },
 });
