@@ -7,28 +7,18 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "eduteach",
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#2563EB"
-        }
-      ]
-    ],
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2563EB"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vanhoa282.eduteach"
     },
     "android": {
       "package": "com.vanhoa282.eduteach",
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "permissions": ["NOTIFICATIONS", "VIBRATE"]
+      "icon": "./assets/icon.png"
     },
     "web": {
       "favicon": "./assets/favicon.png"
