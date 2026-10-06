@@ -11,7 +11,7 @@ Phuc vu sinh vien su pham va cac thay co co lich ranh.
 - react-native-safe-area-context
 - AsyncStorage (persist session)
 - bcryptjs + expo-crypto (hash password)
-- expo-image-picker (upload anh)
+- expo-image-picker + expo-file-system/legacy + base64-arraybuffer (upload anh)
 - EAS Build cho APK
 
 ## SUPABASE
@@ -33,6 +33,16 @@ Phuc vu sinh vien su pham va cac thay co co lich ranh.
 - Upload bill that len Supabase Storage
 - Admin duyet tu bill
 
+## UPLOAD ANH - QUAN TRONG
+Dung `expo-file-system/legacy` + `base64-arraybuffer`:
+- Doc file base64: `FileSystem.readAsStringAsync(uri, { encoding: Base64 })`
+- Convert: `decode(base64)` -> ArrayBuffer
+- Upload: `supabase.storage.from('bills').upload(path, arrayBuffer, { contentType: 'image/png' })`
+- Lay URL: `supabase.storage.from('bills').getPublicUrl(path).data.publicUrl`
+- Render: them cache buster `?t=${Date.now()}`
+
+KHONG dung `fetch(uri).blob()` - Hermes khong ho tro Blob dung cach.
+
 ## CAU TRUC THU MUC
 - App.js: entry, phan nhanh role
 - app.json: Expo config + EAS
@@ -41,13 +51,13 @@ Phuc vu sinh vien su pham va cac thay co co lich ranh.
 
 ### lib/
 - supabase.js: client
-- auth.js: auth + admin + profile + hash password bcrypt
+- auth.js: auth + admin + profile + hash password bcrypt + crypto fallback
 - chat.js: conversations + messages
 - wallet.js: vi + rut tien + cong tien (instant payout)
 - notif.js: he thong thong bao
 - notifications.js: push (chi APK)
 - sound.js: am thanh (tam bo)
-- upload.js: chon/chup/upload anh (dung expo/fetch)
+- upload.js: chon/chup/upload anh (dung FileSystem legacy + base64-arraybuffer)
 - reviews.js: danh gia GV + HS (2 chieu)
 - myTutors.js: gia su cua HS
 - adminTutor.js: admin tao/sua tutor + hash
@@ -63,25 +73,22 @@ Phuc vu sinh vien su pham va cac thay co co lich ranh.
 - AdminBottomNav.js: nav admin (5 tab)
 - AnnouncementBanner.js: banner + modal chi tiet
 - Skeleton.js: loading skeleton (TutorCard, CourseCard, SessionCard)
+- ErrorCatcher.js: bat crash (dev only)
 
 ### screens/
 - AuthScreen, MainTabs, TutorMainTabs, AdminMainTabs
-- HomeScreen: skeleton + banner + filter danh muc
-- AllTutorsScreen: sort + filter nang cao
-- TutorDetailScreen: 3 tabs (Thong tin / Danh gia / Cua toi) + tim + share
+- HomeScreen, AllTutorsScreen, TutorDetailScreen (3 tabs + tim + share)
 - BookingScreen, PaymentScreen
-- CoursesScreen: skeleton
-- CourseDetailScreen: sessions + xac nhan + danh gia
+- CoursesScreen, CourseDetailScreen
 - NotificationsScreen, NotificationDetailScreen
 - ProfileScreen, MyTutorsScreen, WishlistScreen
 - chat/ChatListScreen, chat/ChatDetailScreen
 - profile/EditProfileScreen, ChangePasswordScreen, BankScreen, SupportScreen, TermsScreen
-- tutor/ScheduleScreen (skeleton + banner), StudentsScreen, StudentDetailScreen (co review)
-- tutor/WalletScreen, WithdrawScreen, TutorProfileScreen (toggle + 9 menu)
+- tutor/ScheduleScreen, StudentsScreen, StudentDetailScreen, ReviewStudentScreen
+- tutor/WalletScreen, WithdrawScreen, TutorProfileScreen
 - tutor/TutorEditProfileScreen, MyReviewsScreen, SetScheduleScreen, RevenueScreen
-- tutor/ReviewStudentScreen (GV danh gia HS)
-- admin/DashboardScreen (stats + revenue + 4 nut), OrdersScreen (xem bill), WithdrawsScreen
-- admin/UsersScreen (filter + reset pass), AdminTutorsScreen, CreateTutorScreen
+- admin/DashboardScreen, OrdersScreen, WithdrawsScreen
+- admin/UsersScreen, AdminTutorsScreen, CreateTutorScreen
 - admin/AnnouncementsScreen, CommissionScreen, SystemSettingsScreen, DisputesScreen
 - admin/AdminProfileScreen
 
@@ -113,9 +120,10 @@ Realtime bat: messages, conversations, notifications
 - Persist session (AsyncStorage)
 - Realtime chat + notifications
 - He thong thong bao + banner + modal
-- Upload anh (avatar + bill) len Supabase Storage
+- Upload anh (avatar + bill) len Storage
 - Skeleton loading (TutorCard, CourseCard, SessionCard)
 - UI polish: shadow, hierarchy, bo goc 18-20px
+- ErrorCatcher: bat JS crash (cho dev)
 
 ### Hoc sinh (5 tab)
 - Home: list gia su + filter danh muc + search + skeleton
@@ -163,15 +171,16 @@ Realtime bat: messages, conversations, notifications
 - Hermes fallback cho bcrypt (expo-crypto)
 
 ### Giao dien
-- Icon 1024x1024
+- Icon EduTeach 1024x1024
 - Splash screen 1284x2778
 - Skeleton loading thay spinner
 - Shadow + hierarchy ro rang
 - Bo goc 16-20px
+- Font weight 800 cho heading
 
 ## CON LAI
 ### Uu tien cao
-- Push notification giống Zalo (pg_net trigger) - cho anh hoi ben dai hoc
+- Push notification giong Zalo (pg_net trigger) - cho anh hoi ben dai hoc
 - OTP SDT (eSMS.vn ~1000d/tin) - chong spam
 - Meet link trong session (nut "Vao hoc" thay vi gui link qua chat)
 - Huy buoi truoc 24h (khong tinh phi)
@@ -203,7 +212,7 @@ Realtime bat: messages, conversations, notifications
 - UI tieng Viet
 - Gia: toLocaleString('vi-VN')
 - Tao file: cat > file.js << 'EOF' ... EOF (full code, KHONG keu tim dong)
-- KHONG dung backtick trong heredoc
+- KHONG dung nano, KHONG dung backtick trong heredoc
 
 ## QUY TRINH
 1. Termux session 1: cd ~/projects/EduTeach && npx expo start
@@ -216,26 +225,28 @@ Realtime bat: messages, conversations, notifications
 - EAS_SKIP_AUTO_FINGERPRINT=1 eas build -p android --profile preview
 - EAS CLI: v24.10.0
 - Free tier: 10-30 phut cho build
+- expo-doctor phai pass 21/21 truoc khi build
 - Lan dau build hoi:
   - Generate Android Keystore? -> Y
   - Upload keystore? -> N
   - Commit changes? -> Y
-- expo-doctor phai pass 21/21 truoc khi build
 
 ## LUU Y CHO CHAT MOI
 - Chu du an: Ho Van Hoa - vibe coder, KHONG co may tinh, code 100% tren Termux Android
 - KHONG hoi lai tech stack/database/cau truc - da co trong README
 - User thich ngan gon, co structure (heading, bullet, code block)
 - GUI FULL CODE bang cat EOF - KHONG bao user tim dong roi thay
-- Khong dung nano - luon dung cat > file << 'EOF'
+- KHONG dung nano - luon dung cat > file << 'EOF'
 - Nhac user KHONG bam Ctrl+C khi dang paste heredoc
 - Tao folder moi: mkdir -p truoc
 - Push notification chi hoat dong o APK (SDK 53+ bo push trong Expo Go)
-- Tranh dung backtick trong heredoc
 - Build APK mat 10-30 phut voi free tier
 - Neu Termux treo o "Computing project fingerprint": dung EAS_SKIP_AUTO_FINGERPRINT=1
 - bcryptjs can setRandomFallback voi expo-crypto tren Hermes
+- expo-file-system dung import tu 'expo-file-system/legacy' (SDK 54+)
+- Upload anh: FileSystem.readAsStringAsync + base64-arraybuffer + contentType
 - Khi update DB: huong dan user chay SQL truoc khi build
+- Khi fix bug: chay npx expo-doctor truoc, fix het warning roi build
 
 ## LINKS
 - GitHub: https://github.com/vanhoa282/EduTeach
@@ -245,4 +256,4 @@ Realtime bat: messages, conversations, notifications
 
 ## VERSION
 Last update: 2026-10-06
-Version: MVP 1.1 (them skeleton + polish UI + hash password)
+Version: MVP 1.2 (fix avatar upload + UI polish)
