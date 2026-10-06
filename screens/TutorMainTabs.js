@@ -21,6 +21,8 @@ import ChangePasswordScreen from './profile/ChangePasswordScreen';
 import BankScreen from './profile/BankScreen';
 import SupportScreen from './profile/SupportScreen';
 import TermsScreen from './profile/TermsScreen';
+import AIFloatingButton from '../components/AIFloatingButton';
+import AIChatBox from '../components/AIChatBox';
 import { getWallet } from '../lib/wallet';
 import { getNotifUnreadCount } from '../lib/notif';
 import { getUnreadCount, getOrCreateConversation } from '../lib/chat';
@@ -39,6 +41,7 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [reviewStudent, setReviewStudent] = useState(null);
   const [subScreen, setSubScreen] = useState(null);
+  const [showAI, setShowAI] = useState(false);
   const appState = useRef(AppState.currentState);
 
   const loadBalance = async () => {
@@ -81,127 +84,50 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
     if (!activeConv && !selectedStudent) loadCounts();
   }, [activeConv, activeTab, selectedStudent]);
 
-  if (subScreen === 'edit-profile') {
-    return <EditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={(u) => { setUser(u); setSubScreen(null); }} />;
-  }
-  if (subScreen === 'tutor-profile') {
-    return <TutorEditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'set-schedule') {
-    return <SetScheduleScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'revenue') {
-    return <RevenueScreen user={user} onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'my-reviews') {
-    return <MyReviewsScreen user={user} onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'bank') {
-    return <BankScreen user={user} onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'change-password') {
-    return <ChangePasswordScreen user={user} onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'support') {
-    return <SupportScreen onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'terms') {
-    return <TermsScreen onBack={() => setSubScreen(null)} />;
-  }
+  if (subScreen === 'edit-profile') return <EditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={(u) => { setUser(u); setSubScreen(null); }} />;
+  if (subScreen === 'tutor-profile') return <TutorEditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
+  if (subScreen === 'set-schedule') return <SetScheduleScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
+  if (subScreen === 'revenue') return <RevenueScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'my-reviews') return <MyReviewsScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'bank') return <BankScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'change-password') return <ChangePasswordScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'support') return <SupportScreen onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'terms') return <TermsScreen onBack={() => setSubScreen(null)} />;
 
-  // Review student screen
-  if (reviewStudent) {
-    return (
-      <ReviewStudentScreen
-        user={user}
-        student={reviewStudent}
-        onBack={() => setReviewStudent(null)}
-      />
-    );
-  }
-
-  if (activeConv) {
-    return <ChatDetailScreen user={user} conversation={activeConv} onBack={() => { setActiveConv(null); loadCounts(); }} />;
-  }
+  if (reviewStudent) return <ReviewStudentScreen user={user} student={reviewStudent} onBack={() => setReviewStudent(null)} />;
+  if (activeConv) return <ChatDetailScreen user={user} conversation={activeConv} onBack={() => { setActiveConv(null); loadCounts(); }} />;
 
   if (selectedStudent) {
-    return (
-      <StudentDetailScreen
-        user={user}
-        student={selectedStudent}
-        onBack={() => setSelectedStudent(null)}
-        onReview={(s) => setReviewStudent(s)}
-        onOpenChat={async (s) => {
-          if (s.conversationId) {
-            const { data: conv } = await supabase
-              .from('conversations')
-              .select(`*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)`)
-              .eq('id', s.conversationId).maybeSingle();
-            if (conv) { setSelectedStudent(null); setActiveConv(conv); }
-            return;
-          }
-          const res = await getOrCreateConversation(s.id, user.id);
-          if (res.conversation) {
-            const { data: conv } = await supabase
-              .from('conversations')
-              .select(`*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)`)
-              .eq('id', res.conversation.id).maybeSingle();
-            if (conv) { setSelectedStudent(null); setActiveConv(conv); }
-          }
-        }}
-      />
-    );
+    return <StudentDetailScreen user={user} student={selectedStudent} onBack={() => setSelectedStudent(null)} onReview={(s) => setReviewStudent(s)} onOpenChat={async (s) => {
+      if (s.conversationId) {
+        const { data: conv } = await supabase.from('conversations').select(`*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)`).eq('id', s.conversationId).maybeSingle();
+        if (conv) { setSelectedStudent(null); setActiveConv(conv); }
+        return;
+      }
+      const res = await getOrCreateConversation(s.id, user.id);
+      if (res.conversation) {
+        const { data: conv } = await supabase.from('conversations').select(`*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)`).eq('id', res.conversation.id).maybeSingle();
+        if (conv) { setSelectedStudent(null); setActiveConv(conv); }
+      }
+    }} />;
   }
 
-  if (selectedNotif) {
-    return (
-      <NotificationDetailScreen
-        notification={selectedNotif}
-        onBack={() => { setSelectedNotif(null); loadCounts(); }}
-        onAction={(action) => {
-          setSelectedNotif(null);
-          if (action.screen === 'courses') setActiveTab('schedule');
-          else if (action.screen === 'wallet') setActiveTab('wallet');
-          loadCounts();
-        }}
-      />
-    );
-  }
-
-  if (showWithdraw) {
-    return (
-      <WithdrawScreen
-        user={user} balance={balance}
-        onBack={() => setShowWithdraw(false)}
-        onSuccess={() => { setShowWithdraw(false); setRefreshKey(k => k + 1); setActiveTab('wallet'); }}
-      />
-    );
-  }
+  if (selectedNotif) return <NotificationDetailScreen notification={selectedNotif} onBack={() => { setSelectedNotif(null); loadCounts(); }} onAction={(action) => { setSelectedNotif(null); if (action.screen === 'courses') setActiveTab('schedule'); else if (action.screen === 'wallet') setActiveTab('wallet'); loadCounts(); }} />;
+  if (showWithdraw) return <WithdrawScreen user={user} balance={balance} onBack={() => setShowWithdraw(false)} onSuccess={() => { setShowWithdraw(false); setRefreshKey(k => k + 1); setActiveTab('wallet'); }} />;
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
         {activeTab === 'schedule' && <ScheduleScreen user={user} />}
-        {activeTab === 'students' && (
-          <StudentsScreen user={user} onOpenChat={setActiveConv} onOpenStudent={setSelectedStudent} />
-        )}
+        {activeTab === 'students' && <StudentsScreen user={user} onOpenChat={setActiveConv} onOpenStudent={setSelectedStudent} />}
         {activeTab === 'messages' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
-        {activeTab === 'notifications' && (
-          <NotificationsScreen user={user} onRefresh={loadCounts} onOpenNotif={setSelectedNotif} />
-        )}
-        {activeTab === 'wallet' && (
-          <WalletScreen key={refreshKey} user={user} onOpenWithdraw={() => setShowWithdraw(true)} />
-        )}
-        {activeTab === 'profile' && (
-          <TutorProfileScreen user={user} onLogout={onLogout} onOpenScreen={setSubScreen} />
-        )}
+        {activeTab === 'notifications' && <NotificationsScreen user={user} onRefresh={loadCounts} onOpenNotif={setSelectedNotif} />}
+        {activeTab === 'wallet' && <WalletScreen key={refreshKey} user={user} onOpenWithdraw={() => setShowWithdraw(true)} />}
+        {activeTab === 'profile' && <TutorProfileScreen user={user} onLogout={onLogout} onOpenScreen={setSubScreen} />}
       </View>
-      <TutorBottomNav
-        activeTab={activeTab}
-        onChange={setActiveTab}
-        unreadMsgs={unreadMsgs}
-        unreadNotifs={unreadNotifs}
-      />
+      <TutorBottomNav activeTab={activeTab} onChange={setActiveTab} unreadMsgs={unreadMsgs} unreadNotifs={unreadNotifs} />
+      <AIFloatingButton onPress={() => setShowAI(true)} />
+      <AIChatBox visible={showAI} onClose={() => setShowAI(false)} user={user} />
     </View>
   );
 }

@@ -12,6 +12,8 @@ import AnnouncementsScreen from './admin/AnnouncementsScreen';
 import CommissionScreen from './admin/CommissionScreen';
 import SystemSettingsScreen from './admin/SystemSettingsScreen';
 import DisputesScreen from './admin/DisputesScreen';
+import ESMSConfigScreen from './admin/ESMSConfigScreen';
+import DeepSeekConfigScreen from './admin/DeepSeekConfigScreen';
 import EditProfileScreen from './profile/EditProfileScreen';
 import ChangePasswordScreen from './profile/ChangePasswordScreen';
 import BankScreen from './profile/BankScreen';
@@ -34,74 +36,31 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
 
   useEffect(() => { loadCounts(); }, [activeTab]);
 
-  // Sub-screens
   if (subScreen === 'create-tutor') {
-    return (
-      <CreateTutorScreen
-        user={user}
-        onBack={() => { setSubScreen(null); setActiveTab('tutors'); }}
-        onCreated={() => { setSubScreen(null); setActiveTab('tutors'); }}
-      />
-    );
+    return <CreateTutorScreen user={user} onBack={() => { setSubScreen(null); setActiveTab('tutors'); }} onCreated={() => { setSubScreen(null); setActiveTab('tutors'); }} />;
   }
-  if (subScreen === 'commission') {
-    return <CommissionScreen onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'settings') {
-    return <SystemSettingsScreen onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'disputes') {
-    return <DisputesScreen onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'edit-profile') {
-    return (
-      <EditProfileScreen
-        user={user}
-        onBack={() => setSubScreen(null)}
-        onSaved={(u) => { setUser(u); setSubScreen(null); }}
-      />
-    );
-  }
-  if (subScreen === 'change-password') {
-    return <ChangePasswordScreen user={user} onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'bank') {
-    return <BankScreen user={user} onBack={() => setSubScreen(null)} />;
-  }
-  if (subScreen === 'support') {
-    return <SupportScreen onBack={() => setSubScreen(null)} />;
-  }
+  if (subScreen === 'commission') return <CommissionScreen onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'settings') return <SystemSettingsScreen onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'disputes') return <DisputesScreen onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'esms-config') return <ESMSConfigScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'deepseek-config') return <DeepSeekConfigScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'edit-profile') return <EditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={(u) => { setUser(u); setSubScreen(null); }} />;
+  if (subScreen === 'change-password') return <ChangePasswordScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'bank') return <BankScreen user={user} onBack={() => setSubScreen(null)} />;
+  if (subScreen === 'support') return <SupportScreen onBack={() => setSubScreen(null)} />;
   if (subScreen === 'announcements') {
     return (
       <View style={styles.container}>
-        <View style={styles.content}>
-          <AnnouncementsScreen user={user} />
-        </View>
-        <AdminBottomNav
-          activeTab="dashboard"
-          onChange={(t) => { setSubScreen(null); setActiveTab(t); }}
-          ordersCount={ordersCount}
-          withdrawsCount={withdrawsCount}
-        />
+        <View style={styles.content}><AnnouncementsScreen user={user} /></View>
+        <AdminBottomNav activeTab="dashboard" onChange={(t) => { setSubScreen(null); setActiveTab(t); }} ordersCount={ordersCount} withdrawsCount={withdrawsCount} />
       </View>
     );
   }
   if (subScreen === 'profile') {
     return (
       <View style={styles.container}>
-        <View style={styles.content}>
-          <AdminProfileScreen
-            user={user}
-            onLogout={onLogout}
-            onOpenScreen={setSubScreen}
-          />
-        </View>
-        <AdminBottomNav
-          activeTab="dashboard"
-          onChange={(t) => { setSubScreen(null); setActiveTab(t); }}
-          ordersCount={ordersCount}
-          withdrawsCount={withdrawsCount}
-        />
+        <View style={styles.content}><AdminProfileScreen user={user} onLogout={onLogout} onOpenScreen={setSubScreen} /></View>
+        <AdminBottomNav activeTab="dashboard" onChange={(t) => { setSubScreen(null); setActiveTab(t); }} ordersCount={ordersCount} withdrawsCount={withdrawsCount} />
       </View>
     );
   }
@@ -109,27 +68,13 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {activeTab === 'dashboard' && (
-          <DashboardScreen
-            user={user}
-            onBack={onBack}
-            onOpenProfile={() => setSubScreen('profile')}
-            onOpenScreen={setSubScreen}
-          />
-        )}
+        {activeTab === 'dashboard' && <DashboardScreen user={user} onBack={onBack} onOpenProfile={() => setSubScreen('profile')} onOpenScreen={setSubScreen} />}
         {activeTab === 'orders' && <OrdersScreen />}
         {activeTab === 'withdraws' && <WithdrawsScreen />}
-        {activeTab === 'tutors' && (
-          <AdminTutorsScreen onOpenCreate={() => setSubScreen('create-tutor')} />
-        )}
+        {activeTab === 'tutors' && <AdminTutorsScreen onOpenCreate={() => setSubScreen('create-tutor')} />}
         {activeTab === 'users' && <UsersScreen />}
       </View>
-      <AdminBottomNav
-        activeTab={activeTab}
-        onChange={setActiveTab}
-        ordersCount={ordersCount}
-        withdrawsCount={withdrawsCount}
-      />
+      <AdminBottomNav activeTab={activeTab} onChange={setActiveTab} ordersCount={ordersCount} withdrawsCount={withdrawsCount} />
     </View>
   );
 }

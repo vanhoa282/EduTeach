@@ -5,17 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 export default function AdminProfileScreen({ user, onLogout, onOpenScreen }) {
   const items = [
     { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
+    { key: 'esms-config', icon: 'chatbox-ellipses-outline', label: 'Cấu hình eSMS', color: '#F59E0B' },
+    { key: 'deepseek-config', icon: 'sparkles-outline', label: 'Cấu hình DeepSeek AI', color: '#7C3AED' },
     { key: 'announcements', icon: 'megaphone-outline', label: 'Thông báo hệ thống', color: '#EC4899' },
-    { key: 'settings', icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
     { key: 'commission', icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
-    { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#F59E0B' },
+    { key: 'settings', icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
     { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#EF4444' },
     { key: 'support', icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#6B7280' },
   ];
-
-  const handleItem = (key) => {
-    if (onOpenScreen) onOpenScreen(key);
-  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -38,7 +35,7 @@ export default function AdminProfileScreen({ user, onLogout, onOpenScreen }) {
               key={item.key}
               style={[styles.menuItem, idx === items.length - 1 && styles.menuItemLast]}
               activeOpacity={0.7}
-              onPress={() => handleItem(item.key)}
+              onPress={() => onOpenScreen && onOpenScreen(item.key)}
             >
               <View style={[styles.menuIconBox, { backgroundColor: item.color + '15' }]}>
                 <Ionicons name={item.icon} size={20} color={item.color} />
@@ -62,37 +59,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   content: { padding: 20 },
   header: { alignItems: 'center', paddingVertical: 24 },
-  avatarBox: {
-    width: 84, height: 84, borderRadius: 42, backgroundColor: '#F5F3FF',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-  },
+  avatarBox: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   name: { fontSize: 20, fontWeight: 'bold', color: '#111' },
   phone: { fontSize: 14, color: '#6B7280', marginTop: 4 },
-  roleBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: 10, backgroundColor: '#7C3AED',
-    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
-  },
+  roleBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, backgroundColor: '#7C3AED', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   roleText: { color: '#fff', fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 },
-  menu: {
-    backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, marginBottom: 20,
-  },
-  menuItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
-  },
+  menu: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, marginBottom: 20 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   menuItemLast: { borderBottomWidth: 0 },
-  menuIconBox: {
-    width: 36, height: 36, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center', marginRight: 14,
-  },
+  menuIconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   menuLabel: { flex: 1, fontSize: 15, color: '#111', fontWeight: '500' },
-  logoutBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#FEE2E2', borderRadius: 12, padding: 16,
-  },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FEE2E2', borderRadius: 12, padding: 16 },
   logoutText: { color: '#DC2626', fontSize: 15, fontWeight: '600' },
 });
