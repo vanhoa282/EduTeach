@@ -3,15 +3,17 @@
 ## TONG QUAN
 App mobile ket noi hoc sinh va gia su. 3 role: student, tutor, admin.
 Phuc vu sinh vien su pham va cac thay co co lich ranh.
+Tich hop AI tro ly hoc tap (DeepSeek V4 Pro/Flash).
 
 ## TECH STACK
 - React Native + Expo SDK 57
-- Supabase (Postgres + Realtime + Storage)
+- Supabase (Postgres + Realtime + Storage + Edge Functions)
 - @expo/vector-icons (Ionicons)
 - react-native-safe-area-context
-- AsyncStorage (persist session)
+- AsyncStorage (persist session + AI chat local)
 - bcryptjs + expo-crypto (hash password)
 - expo-image-picker + expo-file-system/legacy + base64-arraybuffer (upload anh)
+- expo-clipboard (copy code block)
 - EAS Build cho APK
 
 ## SUPABASE
@@ -20,6 +22,15 @@ Phuc vu sinh vien su pham va cac thay co co lich ranh.
 - EAS projectId: dc90e3c4-6404-499c-9861-61f3b266d8b2
 - Owner: vanhoa282
 - Storage bucket: bills (public)
+
+## EDGE FUNCTIONS
+1. chat-ai - AI tro ly (DeepSeek V4 Pro/Flash)
+2. admin-esms-config - Admin config eSMS/DeepSeek
+3. send-otp - Gui OTP qua eSMS
+4. verify-otp - Xac minh OTP + tao user
+
+Tat ca deu JWT Verification OFF (dung custom auth trong code).
+Deploy qua Supabase Dashboard -> Edge Functions -> Deploy a new function.
 
 ## TAI KHOAN TEST
 - Admin: 0325272884 (Ho Van Hoa)
@@ -33,47 +44,78 @@ Phuc vu sinh vien su pham va cac thay co co lich ranh.
 - Upload bill that len Supabase Storage
 - Admin duyet tu bill
 
-## UPLOAD ANH - QUAN TRONG
-Dung `expo-file-system/legacy` + `base64-arraybuffer`:
-- Doc file base64: `FileSystem.readAsStringAsync(uri, { encoding: Base64 })`
-- Convert: `decode(base64)` -> ArrayBuffer
-- Upload: `supabase.storage.from('bills').upload(path, arrayBuffer, { contentType: 'image/png' })`
-- Lay URL: `supabase.storage.from('bills').getPublicUrl(path).data.publicUrl`
-- Render: them cache buster `?t=${Date.now()}`
+## AI TRO LY HOC TAP
 
-KHONG dung `fetch(uri).blob()` - Hermes khong ho tro Blob dung cach.
+### Tinh nang
+- Nut tron noi (keo duoc khap man hinh) goc phai duoi
+- Box chat kieu Zalo
+- Tra loi: giai bai, huong dan app, viet code, tim gia su
+- Markdown: **bold** highlight tim, bullet, heading
+- Code block: khung den + nut Copy (expo-clipboard)
+- Latex -> Unicode tu dong (√, ², Δ, π, ∑, ∫...)
+- Table -> Bullet converter (AI khong duoc dung bang markdown)
+
+### Phan cap model
+- Flash (chua co khoa hoc): DeepSeek V4-Flash, 20 cau/ngay
+- Pro (co >=1 khoa hoc, ca HS va GS): DeepSeek V4-Pro, 100 cau/ngay
+- Rate limit admin set duoc
+
+### Bao mat AI
+- KHONG tiet lo: password, so du vi, SDT, CCCD
+- Chi tra loi: danh sach GS (ten, mon, gia), huong dan app, giai bai
+- Cau hoi bao mat -> "Lien he admin qua muc Ho tro"
+
+### Admin config
+- Vao Admin Profile -> Cau hinh DeepSeek AI
+- Nhap mat khau admin -> Nhap API Key -> Luu
+- Config luu trong bang admin_configs (RLS block client)
+
+### API Key DeepSeek
+- Dang ky: platform.deepseek.com
+- Free $1 credit khi dang ky moi
+- Top up it nhat $5 (~125k VND) de dung production
+
+## OTP SDT (READY, CHUA BAT)
+- Edge Function send-otp + verify-otp da co
+- Admin config eSMS trong Admin Profile
+- Can dang ky tai khoan esms.vn (~1000d/tin)
+- Brandname can duyet 1-2 ngay
 
 ## CAU TRUC THU MUC
-- App.js: entry, phan nhanh role
-- app.json: Expo config + EAS
-- eas.json: build profiles
+- App.js, app.json, eas.json, README.md
 - assets/: icon.png (1024x1024) + splash.png (1284x2778)
 
 ### lib/
 - supabase.js: client
-- auth.js: auth + admin + profile + hash password bcrypt + crypto fallback
-- chat.js: conversations + messages
-- wallet.js: vi + rut tien + cong tien (instant payout)
+- auth.js: auth + admin + profile + hash bcrypt + crypto fallback
+- chat.js: chat HS-GS
+- wallet.js: vi + rut tien + instant payout
 - notif.js: he thong thong bao
 - notifications.js: push (chi APK)
-- sound.js: am thanh (tam bo)
-- upload.js: chon/chup/upload anh (dung FileSystem legacy + base64-arraybuffer)
-- reviews.js: danh gia GV + HS (2 chieu)
-- myTutors.js: gia su cua HS
-- adminTutor.js: admin tao/sua tutor + hash
+- upload.js: upload anh (FileSystem legacy + base64-arraybuffer)
+- reviews.js: danh gia 2 chieu
+- myTutors.js: GS cua HS
+- adminTutor.js: admin tao/sua tutor
 - adminSettings.js: settings + disputes + revenue
-- tutorSchedule.js: lich ranh gia su
-- announce.js: he thong announcements
+- adminConfig.js: admin config eSMS/DeepSeek
+- tutorSchedule.js: lich ranh
+- announce.js: announcements
 - favorites.js: wishlist
-- pollUnread.js: poll du phong
+- otp.js: send/verify OTP
+- pollUnread.js
+
+### lib/ai/
+- chat.js: gui cau hoi den Edge Function
+- storage.js: luu chat local (AsyncStorage) + cloud (Supabase)
+- context.js: build ngu canh user cho AI
 
 ### components/
-- BottomNav.js: nav HS (5 tab)
-- TutorBottomNav.js: nav tutor (6 tab)
-- AdminBottomNav.js: nav admin (5 tab)
-- AnnouncementBanner.js: banner + modal chi tiet
-- Skeleton.js: loading skeleton (TutorCard, CourseCard, SessionCard)
-- ErrorCatcher.js: bat crash (dev only)
+- BottomNav.js, TutorBottomNav.js, AdminBottomNav.js
+- AnnouncementBanner.js (banner + modal)
+- Skeleton.js (TutorCard, CourseCard, SessionCard)
+- ErrorCatcher.js
+- AIFloatingButton.js (keo duoc)
+- AIChatBox.js (markdown + code block + latex + table converter)
 
 ### screens/
 - AuthScreen, MainTabs, TutorMainTabs, AdminMainTabs
@@ -89,15 +131,15 @@ KHONG dung `fetch(uri).blob()` - Hermes khong ho tro Blob dung cach.
 - tutor/TutorEditProfileScreen, MyReviewsScreen, SetScheduleScreen, RevenueScreen
 - admin/DashboardScreen, OrdersScreen, WithdrawsScreen
 - admin/UsersScreen, AdminTutorsScreen, CreateTutorScreen
-- admin/AnnouncementsScreen, CommissionScreen, SystemSettingsScreen, DisputesScreen
-- admin/AdminProfileScreen
+- admin/AnnouncementsScreen, CommissionScreen, SystemSettingsScreen
+- admin/DisputesScreen, ESMSConfigScreen, DeepSeekConfigScreen, AdminProfileScreen
 
-## DATABASE TABLES
+## DATABASE TABLES (19 bang)
 1. users: id, phone, password (bcrypt), role, full_name, avatar_url, status, push_token, is_available
-2. tutor_profiles: user_id, bio, subjects[], price_per_session, rating_avg, rating_count, experience_years, cccd_*, contract_*, bank_*, verify_status, available_slots
+2. tutor_profiles: user_id, bio, subjects[], price_per_session, rating_*, experience_years, cccd_*, contract_*, bank_*, verify_status, available_slots
 3. courses: id, student_id, tutor_id, subject, total_sessions, price_per_session, total_price, payment_type, paid_amount, commission_rate, status, schedule
 4. sessions: id, course_id, session_number, scheduled_at, status, customer_confirmed_at, tutor_payout, app_fee
-5. session_reviews: id, session_id, reviewer_id, reviewer_role, rating (1-5), comment
+5. session_reviews: id, session_id, reviewer_id, reviewer_role, rating, comment
 6. wallets: user_id, balance_available, balance_pending
 7. transactions: id, user_id, type, amount, status, ref_id, note
 8. withdraw_requests: id, user_id, amount, bank_*, status, note
@@ -108,93 +150,79 @@ KHONG dung `fetch(uri).blob()` - Hermes khong ho tro Blob dung cach.
 13. messages: id, conversation_id, sender_id, content, read_at
 14. notifications: id, user_id, title, body, type, ref_id, read_at
 15. announcements: id, title, content, type, active, created_by, expires_at
-16. favorites: id, student_id, tutor_id, created_at (unique student+tutor)
+16. favorites: id, student_id, tutor_id, created_at
+17. ai_chats: id, user_id, role, content, model, tokens, created_at
+18. admin_configs: key, value, is_secret, description, updated_at (RLS block client)
+19. otp_codes: id, phone, code, expires_at, used, attempts, created_at
 
 Realtime bat: messages, conversations, notifications
 
 ## DA LAM
 
 ### He thong
-- DB 16 bang + RLS + seed
-- Auth: login/signup 2 tab + bcrypt hash + auto-migrate plain text
+- DB 19 bang + RLS + seed
+- Auth: bcrypt + auto-migrate plain text + OTP flow (ready)
 - Persist session (AsyncStorage)
 - Realtime chat + notifications
-- He thong thong bao + banner + modal
-- Upload anh (avatar + bill) len Storage
-- Skeleton loading (TutorCard, CourseCard, SessionCard)
-- UI polish: shadow, hierarchy, bo goc 18-20px
-- ErrorCatcher: bat JS crash (cho dev)
+- Upload anh (avatar + bill)
+- Skeleton loading
+- UI polish: shadow, hierarchy
 
 ### Hoc sinh (5 tab)
-- Home: list gia su + filter danh muc + search + skeleton
-- AllTutors: sort (rating/gia/review) + filter nang cao (gia, kinh nghiem)
+- Home + filter danh muc + search + skeleton
+- AllTutors: sort + filter nang cao
 - TutorDetail: 3 tab (Thong tin / Danh gia / Cua toi) + tim + share
-- Booking: 10/20/30 buoi + discount + lich + PTTT 100/50
-- Payment: STK ACB + ma EDT + countdown + upload bill that
-- Courses: skeleton + list
-- CourseDetail: sessions + xac nhan + danh gia 1-5 sao + khieu nai
-- Chat realtime + optimistic
-- Notifications + chi tiet
-- MyTutors: gia su dang hoc
-- Wishlist: yeu thich gia su
-- Profile: 7 menu
+- Booking + Payment + upload bill
+- Courses + CourseDetail (xac nhan buoi + danh gia)
+- Chat + Notifications + MyTutors + Wishlist
+- Profile 7 menu
 
 ### Gia su (6 tab)
-- Schedule: skeleton + banner + filter
-- Students: list + dem buoi chinh xac + chat + chi tiet
-- StudentDetail: profile + stats + list khoa + danh gia GV khac
-- ReviewStudent: GV danh gia HS
-- Wallet: so du (instant payout) + tab rut
-- Withdraw: form rut
-- TutorProfile: toggle nhan lop + 9 menu
-- TutorEditProfile: bio + mon + gia + kinh nghiem
-- SetSchedule: grid 7 ngay x 12 gio
-- Revenue: bieu do 6 thang
-- MyReviews: bar chart + filter sao
+- Schedule (skeleton + filter)
+- Students + StudentDetail + ReviewStudent (GV danh gia HS)
+- Wallet + Withdraw
+- Profile 9 menu + toggle nhan lop
+- TutorEditProfile + SetSchedule + Revenue + MyReviews
 
 ### Admin (5 tab)
-- Dashboard: stats + card doanh thu tim + bieu do + 4 nut
-- Orders: xem bill fullscreen + duyet + tao sessions
-- Withdraws: duyet rut
-- AdminTutors: list + tao + reset pass
-- Users: filter + doi role + reset pass + khoa
-- Commission: cau hinh hoa hong
-- SystemSettings: min/max rut + auto_pass
-- Disputes: khieu nai
-- Announcements: CRUD
-- AdminProfile: 7 menu
+- Dashboard + revenue chart + 4 nut
+- Orders + Withdraws + AdminTutors + Users
+- Commission + SystemSettings + Disputes
+- Announcements + eSMS + DeepSeek config
+- AdminProfile 8 menu
+
+### AI Tro ly
+- Nut noi keo duoc (Animated + PanResponder)
+- Chat box markdown
+- Code block + copy button (expo-clipboard)
+- Latex -> Unicode converter
+- Table -> Bullet converter (fallback)
+- Phan cap Flash/Pro theo khoa hoc
+- Rate limit admin set
 
 ### Bao mat
-- Hash password bcrypt (10 rounds)
-- Auto-migrate plain text cu sang hash khi login
-- Admin reset password (co hash)
-- Hermes fallback cho bcrypt (expo-crypto)
-
-### Giao dien
-- Icon EduTeach 1024x1024
-- Splash screen 1284x2778
-- Skeleton loading thay spinner
-- Shadow + hierarchy ro rang
-- Bo goc 16-20px
-- Font weight 800 cho heading
+- Hash bcrypt + crypto fallback Hermes
+- Admin reset password hashed
+- AI tu choi cau hoi ve password/vi tien/SDT
+- Config luu DB (RLS block client)
 
 ## CON LAI
 ### Uu tien cao
-- Push notification giong Zalo (pg_net trigger) - cho anh hoi ben dai hoc
-- OTP SDT (eSMS.vn ~1000d/tin) - chong spam
-- Meet link trong session (nut "Vao hoc" thay vi gui link qua chat)
-- Huy buoi truoc 24h (khong tinh phi)
+- Push notification giong Zalo (pg_net trigger) - cho hoi ben dai hoc
+- OTP SDT hoan chinh (can tai khoan esms.vn)
+- Meet link trong session (nut "Vao hoc")
+- Huy buoi truoc 24h
 
 ### Trung binh
-- Tu dong chuyen pending sang available sau 7 ngay
-- Thong bao buoi hoc sap toi
-- Doi icon + splash cho dep hon
+- Doi icon + splash dep hon
+- Tu dong chuyen pending -> available sau 7 ngay
+- Thong bao buoi sap toi
 - Build APK production + xoa DB
 
 ### Thap
-- eKYC CCCD gia su
-- Dang ky ho kinh doanh + tai khoan doanh nghiep ACB
-- Hop dong dien tu (VNPT SmartCA)
+- eKYC CCCD
+- Ho kinh doanh + tai khoan doanh nghiep ACB
+- Hop dong dien tu
 - Dark mode
 
 ## QUY UOC CODE
@@ -203,57 +231,51 @@ Realtime bat: messages, conversations, notifications
 - Mau thanh cong: 10B981
 - Mau canh bao: F59E0B
 - Mau loi: EF4444
-- Shadow: 0.06-0.08 opacity, radius 10-12
-- Bo goc: 16-20px cho card, 20-22px cho button
-- Font weight: 800 cho heading, 700 cho subheading
-- Letter spacing: -0.3 den -0.5 cho heading lon
+- Bo goc: 16-20px card, 20-22px button
+- Font weight: 800 heading, 700 subheading
 - SafeAreaView tu react-native-safe-area-context
-- StyleSheet.create cuoi file
 - UI tieng Viet
 - Gia: toLocaleString('vi-VN')
-- Tao file: cat > file.js << 'EOF' ... EOF (full code, KHONG keu tim dong)
+- Tao file: cat > file.js << 'EOF' ... EOF (FULL CODE, KHONG keu tim dong)
 - KHONG dung nano, KHONG dung backtick trong heredoc
 
 ## QUY TRINH
 1. Termux session 1: cd ~/projects/EduTeach && npx expo start
 2. Test tren Expo Go
 3. Build APK: EAS_SKIP_AUTO_FINGERPRINT=1 eas build -p android --profile preview
-4. Cai APK + test production
+4. Cai APK + test
 
 ## BUILD APK
-- cd ~/projects/EduTeach
 - EAS_SKIP_AUTO_FINGERPRINT=1 eas build -p android --profile preview
 - EAS CLI: v24.10.0
-- Free tier: 10-30 phut cho build
+- Free tier: 10-30 phut
 - expo-doctor phai pass 21/21 truoc khi build
-- Lan dau build hoi:
-  - Generate Android Keystore? -> Y
-  - Upload keystore? -> N
-  - Commit changes? -> Y
 
 ## LUU Y CHO CHAT MOI
-- Chu du an: Ho Van Hoa - vibe coder, KHONG co may tinh, code 100% tren Termux Android
-- KHONG hoi lai tech stack/database/cau truc - da co trong README
-- User thich ngan gon, co structure (heading, bullet, code block)
-- GUI FULL CODE bang cat EOF - KHONG bao user tim dong roi thay
-- KHONG dung nano - luon dung cat > file << 'EOF'
-- Nhac user KHONG bam Ctrl+C khi dang paste heredoc
-- Tao folder moi: mkdir -p truoc
+- Chu du an: Ho Van Hoa - vibe coder, KHONG co may tinh, code 100% Termux Android
+- KHONG hoi lai tech stack/database - da co trong README
+- User thich ngan gon, co structure
+- GUI FULL CODE bang cat EOF - KHONG bao user tim dong
+- KHONG dung nano - luon cat > file << 'EOF'
+- Nhac user KHONG bam Ctrl+C khi paste heredoc
 - Push notification chi hoat dong o APK (SDK 53+ bo push trong Expo Go)
-- Build APK mat 10-30 phut voi free tier
-- Neu Termux treo o "Computing project fingerprint": dung EAS_SKIP_AUTO_FINGERPRINT=1
 - bcryptjs can setRandomFallback voi expo-crypto tren Hermes
-- expo-file-system dung import tu 'expo-file-system/legacy' (SDK 54+)
-- Upload anh: FileSystem.readAsStringAsync + base64-arraybuffer + contentType
-- Khi update DB: huong dan user chay SQL truoc khi build
+- expo-file-system dung import tu 'expo-file-system/legacy'
+- Upload anh: readAsStringAsync + base64-arraybuffer + contentType
+- Edge Functions deploy qua Supabase Dashboard (khong can CLI)
+- JWT Verification: OFF cho tat ca Edge Functions
 - Khi fix bug: chay npx expo-doctor truoc, fix het warning roi build
+- AI config trong bang admin_configs (RLS block client)
+- AI tu choi cau hoi ve password/vi tien/SDT
+- AI khong duoc dung bang markdown, phai dung bullet
 
 ## LINKS
 - GitHub: https://github.com/vanhoa282/EduTeach
 - Supabase: https://supabase.com/dashboard
 - Expo: https://expo.dev
-- EAS Builds: https://expo.dev/accounts/vanhoa282/projects/EduTeach/builds
+- DeepSeek: https://platform.deepseek.com
+- eSMS: https://esms.vn
 
 ## VERSION
 Last update: 2026-10-06
-Version: MVP 1.2 (fix avatar upload + UI polish)
+Version: MVP 1.4 (AI tro ly hoan chinh + code block + table converter + latex)
