@@ -14,6 +14,7 @@ import CourseDetailScreen from './CourseDetailScreen';
 import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
 import MyTutorsScreen from './MyTutorsScreen';
+import WishlistScreen from './WishlistScreen';
 import AdminMainTabs from './AdminMainTabs';
 import EditProfileScreen from './profile/EditProfileScreen';
 import ChangePasswordScreen from './profile/ChangePasswordScreen';
@@ -70,7 +71,21 @@ export default function MainTabs({ user: initialUser, onLogout }) {
     };
   }, [user?.id]);
 
-  // My Tutors Screen
+  // Wishlist screen
+  if (profileScreen === 'wishlist') {
+    return (
+      <WishlistScreen
+        user={user}
+        onBack={() => setProfileScreen(null)}
+        onSelectTutor={(t) => {
+          setProfileScreen(null);
+          setSelectedTutor(t);
+        }}
+      />
+    );
+  }
+
+  // MyTutors screen
   if (profileScreen === 'my-tutors') {
     return (
       <MyTutorsScreen
@@ -79,32 +94,19 @@ export default function MainTabs({ user: initialUser, onLogout }) {
         onOpenChat={(conv) => { setProfileScreen(null); setActiveConv(conv); }}
         onSelectTutor={(t) => {
           setProfileScreen(null);
-          // Convert MyTutor format sang Tutor format cho TutorDetailScreen
           setSelectedTutor({
-            id: t.id,
-            name: t.name,
-            avatar: t.avatar,
+            id: t.id, name: t.name, avatar: t.avatar,
             subject: t.subjects?.[0] || 'Chưa rõ',
-            experience: 'Đang dạy',
-            rating: 5.0,
-            reviews: 0,
-            price: t.price,
-            bio: '',
+            experience: 'Đang dạy', rating: 5.0, reviews: 0,
+            price: t.price, bio: '',
           });
         }}
       />
     );
   }
 
-  // Profile sub-screens
   if (profileScreen === 'edit-profile') {
-    return (
-      <EditProfileScreen
-        user={user}
-        onBack={() => setProfileScreen(null)}
-        onSaved={(u) => { setUser(u); setProfileScreen(null); }}
-      />
-    );
+    return <EditProfileScreen user={user} onBack={() => setProfileScreen(null)} onSaved={(u) => { setUser(u); setProfileScreen(null); }} />;
   }
   if (profileScreen === 'change-password') {
     return <ChangePasswordScreen user={user} onBack={() => setProfileScreen(null)} />;
@@ -124,13 +126,7 @@ export default function MainTabs({ user: initialUser, onLogout }) {
   }
 
   if (activeConv) {
-    return (
-      <ChatDetailScreen
-        user={user}
-        conversation={activeConv}
-        onBack={() => { setActiveConv(null); loadCounts(); }}
-      />
-    );
+    return <ChatDetailScreen user={user} conversation={activeConv} onBack={() => { setActiveConv(null); loadCounts(); }} />;
   }
 
   if (selectedNotif) {
@@ -219,11 +215,7 @@ export default function MainTabs({ user: initialUser, onLogout }) {
     <View style={styles.container}>
       <View style={styles.content}>
         {activeTab === 'home' && (
-          <HomeScreen
-            user={user}
-            onSelectTutor={setSelectedTutor}
-            onOpenAllTutors={setAllTutorsFilter}
-          />
+          <HomeScreen user={user} onSelectTutor={setSelectedTutor} onOpenAllTutors={setAllTutorsFilter} />
         )}
         {activeTab === 'courses' && (
           <CoursesScreen

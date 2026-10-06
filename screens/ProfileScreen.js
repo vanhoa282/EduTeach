@@ -6,9 +6,9 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScree
   const isAdmin = user?.role === 'admin';
   const isTutor = user?.role === 'tutor';
 
-  // Menu cho học sinh
   const studentItems = [
     { key: 'my-tutors', icon: 'people-outline', label: 'Gia sư của tôi', color: '#EC4899' },
+    { key: 'wishlist', icon: 'heart-outline', label: 'Gia sư yêu thích', color: '#EF4444' },
     { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
     { key: 'bank', icon: 'card-outline', label: 'Tài khoản ngân hàng', color: '#10B981' },
     { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#8B5CF6' },
@@ -16,7 +16,6 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScree
     { key: 'terms', icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
   ];
 
-  // Menu cho gia sư
   const tutorItems = [
     { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
     { key: 'tutor-profile', icon: 'document-text-outline', label: 'Hồ sơ gia sư', color: '#8B5CF6' },
@@ -26,7 +25,6 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScree
     { key: 'terms', icon: 'document-text-outline', label: 'Điều khoản & Chính sách', color: '#6B7280' },
   ];
 
-  // Menu cho admin
   const adminItems = [
     { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
     { key: 'settings', icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
@@ -61,11 +59,7 @@ export default function ProfileScreen({ user, onLogout, onOpenAdmin, onOpenScree
         </View>
 
         {isAdmin && (
-          <TouchableOpacity
-            style={styles.adminBtn}
-            onPress={onOpenAdmin}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.adminBtn} onPress={onOpenAdmin} activeOpacity={0.8}>
             <View style={styles.adminBtnIcon}>
               <Ionicons name="shield-checkmark" size={22} color="#fff" />
             </View>

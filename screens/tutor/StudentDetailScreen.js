@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getStudentReviews, getRatingStats, maskName } from '../../lib/reviews';
 
 const STATUS_CFG = {
   pending_payment: { label: 'Chờ TT', color: '#F59E0B', bg: '#FFFBEB' },
@@ -20,9 +21,11 @@ const SESSION_STATUS = {
   cancelled: { label: 'Đã huỷ', color: '#6B7280', bg: '#F3F4F6', icon: 'close-circle' },
 };
 
-export default function StudentDetailScreen({ user, student, onBack, onOpenChat }) {
+export default function StudentDetailScreen({ user, student, onBack, onOpenChat, onReview }) {
   const [courses, setCourses] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [stats, setStats] = useState({ 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, total: 0, avg: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -50,6 +53,10 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
       setSessions([]);
     }
 
+    // Lấy review về HS (từ GV khác)
+    const r = await getStudentReviews(student.id);
+    setReviews(r);
+    setStats(getRatingStats(r));
     setLoading(false);
   };
 
@@ -61,11 +68,8 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
     setRefreshing(false);
   };
 
-  const totalSessions = sessions.length;
-  const confirmedSessions = sessions.filter(s => s.status === 'confirmed').length;
-  const totalEarned = sessions
-    .filter(s => s.status === 'confirmed')
-    .reduce((sum, s) => sum + (s.tutor_payout || 0), 0);
+  const confirmedSessions = sessions.filter(s => s.status === 'confirmed');
+  const totalEarned = confirmedSessions.reduce((sum, s) => sum + (s.tutor_payout || 0), 0);
 
   if (loading) {
     return (
@@ -77,6 +81,14 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
     );
   }
 
+  const StarRow = ({ value, size = 14 }) => (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Ionicons key={i} name={i <= value ? 'star' : 'star-outline'} size={size} color="#F59E0B" />
+      ))}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
@@ -84,7 +96,9 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Chi tiết học sinh</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity style={styles.backBtn} onPress={() => onReview && onReview(student)}>
+          <Ionicons name="star-outline" size={20} color="#8B5CF6" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -100,24 +114,43 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
             <Text style={styles.phone}>{student.phone}</Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.chatBtn}
-            onPress={() => onOpenChat && onOpenChat(student)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-            <Text style={styles.chatBtnText}>Nhắn tin</Text>
-          </TouchableOpacity>
+          {stats.total > 0 && (
+            <View style={styles.ratingBox}>
+              <Ionicons name="star" size={16} color="#F59E0B" />
+              <Text style={styles.ratingText}>{stats.avg.toFixed(1)}</Text>
+              <Text style={styles.ratingSub}>({stats.total} đánh giá từ GV)</Text>
+            </View>
+          )}
+
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.chatBtn}
+              onPress={() => onOpenChat && onOpenChat(student)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+              <Text style={styles.chatBtnText}>Nhắn tin</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.reviewBtn}
+              onPress={() => onReview && onReview(student)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="star" size={18} color="#8B5CF6" />
+              <Text style={styles.reviewBtnText}>Đánh giá</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
-            <Text style={styles.statValue}>{totalSessions}</Text>
+            <Text style={styles.statValue}>{sessions.length}</Text>
             <Text style={styles.statLabel}>Tổng buổi</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statBox}>
-            <Text style={[styles.statValue, { color: '#10B981' }]}>{confirmedSessions}</Text>
+            <Text style={[styles.statValue, { color: '#10B981' }]}>{confirmedSessions.length}</Text>
             <Text style={styles.statLabel}>Đã dạy</Text>
           </View>
           <View style={styles.statDivider} />
@@ -128,6 +161,34 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
             <Text style={styles.statLabel}>Thu nhập</Text>
           </View>
         </View>
+
+        {/* Reviews */}
+        {stats.total > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Đánh giá từ GV khác ({stats.total})</Text>
+            {reviews.slice(0, 5).map(r => (
+              <View key={r.id} style={styles.reviewCard}>
+                <View style={styles.reviewTop}>
+                  <View style={styles.reviewAvatar}>
+                    <Text style={styles.reviewAvatarText}>
+                      {(r.tutor?.full_name || 'G').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reviewName}>{maskName(r.tutor?.full_name)}</Text>
+                    <View style={styles.reviewMeta}>
+                      <StarRow value={Math.round(r.rating)} size={12} />
+                      <Text style={styles.reviewTime}>
+                        {new Date(r.created_at).toLocaleDateString('vi-VN')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {r.comment && <Text style={styles.reviewComment}>{r.comment}</Text>}
+              </View>
+            ))}
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>Khóa học ({courses.length})</Text>
 
@@ -187,9 +248,7 @@ export default function StudentDetailScreen({ user, student, onBack, onOpenChat 
                     );
                   })}
                   {courseSessions.length > 5 && (
-                    <Text style={styles.moreText}>
-                      +{courseSessions.length - 5} buổi khác...
-                    </Text>
+                    <Text style={styles.moreText}>+{courseSessions.length - 5} buổi khác...</Text>
                   )}
                 </View>
               )}
@@ -226,14 +285,25 @@ const styles = StyleSheet.create({
   name: { fontSize: 20, fontWeight: 'bold', color: '#111' },
   phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   phone: { fontSize: 14, color: '#6B7280' },
+  ratingBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 10, paddingHorizontal: 14, paddingVertical: 6,
+    backgroundColor: '#FFFBEB', borderRadius: 20,
+  },
+  ratingText: { fontSize: 15, fontWeight: 'bold', color: '#111' },
+  ratingSub: { fontSize: 12, color: '#9CA3AF' },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 16, width: '100%' },
   chatBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#2563EB', paddingHorizontal: 24, paddingVertical: 12,
-    borderRadius: 12, marginTop: 16,
-    shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25, shadowRadius: 10, elevation: 5,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#2563EB', paddingVertical: 12, borderRadius: 12,
   },
   chatBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  reviewBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#F5F3FF', paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1, borderColor: '#8B5CF6',
+  },
+  reviewBtnText: { color: '#8B5CF6', fontSize: 14, fontWeight: '600' },
   statsRow: {
     flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16,
     paddingVertical: 16, marginBottom: 24,
@@ -247,6 +317,24 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: 'bold', color: '#111', marginBottom: 12 },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { fontSize: 14, color: '#9CA3AF', marginTop: 8 },
+  reviewCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
+  },
+  reviewTop: { flexDirection: 'row', gap: 10 },
+  reviewAvatar: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: '#8B5CF6',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reviewAvatarText: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+  reviewName: { fontSize: 14, fontWeight: '600', color: '#111' },
+  reviewMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  reviewTime: { fontSize: 11, color: '#9CA3AF' },
+  reviewComment: {
+    fontSize: 13, color: '#4B5563', lineHeight: 20,
+    marginTop: 10, paddingLeft: 50,
+  },
   courseCard: {
     backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },

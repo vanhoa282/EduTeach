@@ -4,6 +4,7 @@ import TutorBottomNav from '../components/TutorBottomNav';
 import ScheduleScreen from './tutor/ScheduleScreen';
 import StudentsScreen from './tutor/StudentsScreen';
 import StudentDetailScreen from './tutor/StudentDetailScreen';
+import ReviewStudentScreen from './tutor/ReviewStudentScreen';
 import WalletScreen from './tutor/WalletScreen';
 import WithdrawScreen from './tutor/WithdrawScreen';
 import TutorProfileScreen from './tutor/TutorProfileScreen';
@@ -36,6 +37,7 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
   const [selectedNotif, setSelectedNotif] = useState(null);
   const [activeConv, setActiveConv] = useState(null);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [reviewStudent, setReviewStudent] = useState(null);
   const [subScreen, setSubScreen] = useState(null);
   const appState = useRef(AppState.currentState);
 
@@ -107,6 +109,17 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
     return <TermsScreen onBack={() => setSubScreen(null)} />;
   }
 
+  // Review student screen
+  if (reviewStudent) {
+    return (
+      <ReviewStudentScreen
+        user={user}
+        student={reviewStudent}
+        onBack={() => setReviewStudent(null)}
+      />
+    );
+  }
+
   if (activeConv) {
     return <ChatDetailScreen user={user} conversation={activeConv} onBack={() => { setActiveConv(null); loadCounts(); }} />;
   }
@@ -117,6 +130,7 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
         user={user}
         student={selectedStudent}
         onBack={() => setSelectedStudent(null)}
+        onReview={(s) => setReviewStudent(s)}
         onOpenChat={async (s) => {
           if (s.conversationId) {
             const { data: conv } = await supabase
