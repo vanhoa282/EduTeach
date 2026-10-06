@@ -43,7 +43,11 @@ export default function TutorProfileScreen({ user, onLogout, onOpenScreen }) {
         <View style={styles.header}>
           <View style={styles.avatarWrap}>
             {user?.avatar_url ? (
-              <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.avatarImg}
+                onError={(e) => console.log('Avatar error:', e.nativeEvent.error)}
+              />
             ) : (
               <Ionicons name="person" size={40} color="#2563EB" />
             )}
@@ -61,7 +65,6 @@ export default function TutorProfileScreen({ user, onLogout, onOpenScreen }) {
           </View>
         </View>
 
-        {/* Toggle nhận lớp */}
         <View style={[styles.availableCard, !isAvailable && styles.availableCardOff]}>
           <View style={[styles.availableIconBox, { backgroundColor: isAvailable ? '#D1FAE5' : '#FEE2E2' }]}>
             <Ionicons

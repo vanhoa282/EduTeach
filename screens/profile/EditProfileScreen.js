@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { updateProfile } from '../../lib/auth';
-import { pickImage, takePhoto, uploadImage } from '../../lib/upload';
+import { pickImage, takePhoto, uploadImage, getAvatarUrl } from '../../lib/upload';
 
 export default function EditProfileScreen({ user, onBack, onSaved }) {
   const [fullName, setFullName] = useState(user?.full_name || '');
@@ -23,7 +23,7 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
     if (res.error) return Alert.alert('Lỗi', res.error);
 
     setUploading(true);
-    console.log('📤 Bắt đầu upload:', res.uri);
+    console.log('Uploading:', res.uri);
 
     const up = await uploadImage({
       uri: res.uri,
@@ -32,13 +32,11 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
     });
 
     setUploading(false);
-    console.log('📥 Upload result:', up);
+    console.log('Upload result:', up);
 
     if (up.error) return Alert.alert('Lỗi upload', up.error);
 
-    // Cache buster để image refresh
-    const finalUrl = up.url + '?t=' + Date.now();
-    setAvatar(finalUrl);
+    setAvatar(up.url);
     Alert.alert('Thành công', 'Ảnh đã upload. Bấm "Lưu thay đổi" để hoàn tất.');
   };
 
@@ -54,15 +52,11 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
     if (!fullName.trim()) return Alert.alert('Lỗi', 'Vui lòng nhập họ tên');
 
     setSaving(true);
-    console.log('💾 Saving profile with avatar:', avatar);
-
     const res = await updateProfile(user.id, {
       fullName: fullName.trim(),
       avatarUrl: avatar,
     });
     setSaving(false);
-
-    console.log('💾 Save result:', res);
 
     if (res.error) return Alert.alert('Lỗi', res.error);
 
@@ -73,6 +67,9 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
 
   const roleLabel = user?.role === 'admin' ? 'Quản trị viên' : user?.role === 'tutor' ? 'Gia sư' : 'Học sinh';
   const roleIcon = user?.role === 'admin' ? 'shield-checkmark' : user?.role === 'tutor' ? 'briefcase' : 'school';
+
+  // Dùng getAvatarUrl để thêm cache buster
+  const avatarUri = avatar ? getAvatarUrl(avatar) : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -92,11 +89,11 @@ export default function EditProfileScreen({ user, onBack, onSaved }) {
             activeOpacity={0.8}
             disabled={uploading}
           >
-            {avatar ? (
+            {avatarUri ? (
               <Image
-                source={{ uri: avatar }}
+                source={{ uri: avatarUri }}
                 style={styles.avatarImg}
-                onError={(e) => console.log('❌ Image load error:', e.nativeEvent.error)}
+                onError={(e) => console.log('❌ Image error:', e.nativeEvent.error)}
                 onLoad={() => console.log('✅ Image loaded')}
               />
             ) : (
