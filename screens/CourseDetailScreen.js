@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { payTutorForSession } from '../lib/wallet';
 import { createNotification } from '../lib/notif';
+import { createDispute } from '../lib/disputes';
 
 const STATUS_CFG = {
   pending_payment: { label: 'Chờ thanh toán', color: '#F59E0B', bg: '#FFFBEB' },
@@ -30,6 +31,11 @@ export default function CourseDetailScreen({ courseId, onBack }) {
   const [reviewModal, setReviewModal] = useState(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+
+  // ===== DISPUTE / KHIẾU NẠI =====
+  const [disputeModal, setDisputeModal] = useState(null);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
 
   const load = async () => {
     const { data: c, error: cErr } = await supabase
@@ -94,6 +100,37 @@ export default function CourseDetailScreen({ courseId, onBack }) {
   const handleSubmitReview = async () => {
     if (!reviewModal) return;
 
+    // Không cho đánh giá nếu khiếu nại của buổi học
+    // đã bị Admin bác bỏ và buổi được auto-confirm.
+    const { data: rejectedDispute, error: disputeCheckError } = await supabase
+      .from('disputes')
+      .select('id')
+      .eq('session_id', reviewModal.id)
+      .eq('status', 'rejected')
+      .limit(1)
+      .maybeSingle();
+
+    if (disputeCheckError) {
+      console.error(
+        'Check rejected dispute before review:',
+        disputeCheckError
+      );
+
+      return Alert.alert(
+        'Lỗi',
+        'Không thể kiểm tra trạng thái khiếu nại. Vui lòng thử lại.'
+      );
+    }
+
+    if (rejectedDispute) {
+      setReviewModal(null);
+
+      return Alert.alert(
+        'Không thể đánh giá',
+        'Buổi học này được tự động xác nhận sau khi khiếu nại bị bác bỏ nên không thể đánh giá.'
+      );
+    }
+
     const { error } = await supabase
       .from('session_reviews')
       .insert({
@@ -120,42 +157,66 @@ export default function CourseDetailScreen({ courseId, onBack }) {
     Alert.alert('Cảm ơn!', 'Đánh giá của bạn đã được ghi nhận.');
   };
 
-  const handleDispute = (session) => {
+  const handleDispute = async (session) => {
+    const { data: existing, error } = await supabase
+      .from('disputes')
+      .select('id, status')
+      .eq('session_id', session.id)
+      .eq('raised_by', course.student_id)
+      .eq('status', 'open')
+      .maybeSingle();
+
+    if (error) {
+      return Alert.alert('Lỗi', error.message);
+    }
+
+    if (existing) {
+      return Alert.alert(
+        'Đang chờ xử lý',
+        'Buổi học này đã có khiếu nại đang chờ Admin xử lý.'
+      );
+    }
+
+    setDisputeReason('');
+    setDisputeModal(session);
+  };
+
+  const handleSubmitDispute = async () => {
+    if (!disputeModal || disputeSubmitting) return;
+
+    const reason = disputeReason.trim();
+
+    if (reason.length < 10) {
+      return Alert.alert(
+        'Chưa đủ thông tin',
+        'Vui lòng mô tả lý do khiếu nại ít nhất 10 ký tự.'
+      );
+    }
+
+    setDisputeSubmitting(true);
+
+    const res = await createDispute({
+      sessionId: disputeModal.id,
+      raisedBy: course.student_id,
+      reason,
+      sessionNumber: disputeModal.session_number,
+      subject: course.subject,
+    });
+
+    setDisputeSubmitting(false);
+
+    if (res.error) {
+      return Alert.alert('Không thể gửi', res.error);
+    }
+
+    setDisputeModal(null);
+    setDisputeReason('');
+
+    await load();
+
     Alert.alert(
-      'Khiếu nại buổi học',
-      `Buổi ${session.session_number}: Bạn muốn khiếu nại?`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Khiếu nại',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase
-              .from('sessions')
-              .update({ status: 'disputed' })
-              .eq('id', session.id);
-            if (error) return Alert.alert('Lỗi', error.message);
-
-            // Thông báo cho admin
-            const { data: admins } = await supabase
-              .from('users').select('id').eq('role', 'admin');
-            if (admins) {
-              for (const a of admins) {
-                await createNotification({
-                  userId: a.id,
-                  title: '⚠️ Có khiếu nại mới',
-                  body: `Học sinh khiếu nại buổi ${session.session_number} môn ${course.subject}.`,
-                  type: 'session',
-                  refId: session.id,
-                });
-              }
-            }
-
-            Alert.alert('Đã gửi', 'Admin sẽ liên hệ bạn trong 24h.');
-            load();
-          },
-        },
-      ]
+      'Đã gửi khiếu nại',
+      'Khiếu nại của bạn đã được gửi đến Admin. Trạng thái xử lý sẽ được thông báo cho bạn.'
     );
   };
 
@@ -322,6 +383,111 @@ export default function CourseDetailScreen({ courseId, onBack }) {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <Modal
+        visible={!!disputeModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!disputeSubmitting) {
+            setDisputeModal(null);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  Khiếu nại buổi học
+                </Text>
+
+                <Text style={styles.modalSub}>
+                  Buổi {disputeModal?.session_number} · {course.subject}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                disabled={disputeSubmitting}
+                onPress={() => setDisputeModal(null)}
+              >
+                <Ionicons
+                  name="close"
+                  size={24}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.disputeWarning}>
+              <Ionicons
+                name="information-circle-outline"
+                size={20}
+                color="#DC2626"
+              />
+
+              <Text style={styles.disputeWarningText}>
+                Buổi học sẽ tạm dừng xác nhận trong thời gian Admin xử lý.
+              </Text>
+            </View>
+
+            <Text style={styles.disputeLabel}>
+              Lý do khiếu nại
+            </Text>
+
+            <TextInput
+              style={[
+                styles.modalInput,
+                { minHeight: 120 }
+              ]}
+              placeholder="Ví dụ: Gia sư không tham gia buổi học theo lịch đã hẹn..."
+              placeholderTextColor="#9CA3AF"
+              multiline
+              maxLength={1000}
+              value={disputeReason}
+              onChangeText={setDisputeReason}
+              editable={!disputeSubmitting}
+            />
+
+            <Text style={styles.disputeCounter}>
+              {disputeReason.trim().length}/1000
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.disputeSubmit,
+                (
+                  disputeReason.trim().length < 10 ||
+                  disputeSubmitting
+                ) && styles.disputeSubmitDisabled
+              ]}
+              onPress={handleSubmitDispute}
+              disabled={
+                disputeReason.trim().length < 10 ||
+                disputeSubmitting
+              }
+            >
+              {disputeSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons
+                    name="paper-plane-outline"
+                    size={18}
+                    color="#fff"
+                  />
+
+                  <Text style={styles.modalSubmitText}>
+                    Gửi khiếu nại
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={!!reviewModal}
@@ -492,5 +658,55 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 16,
     alignItems: 'center',
   },
-  modalSubmitText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  modalSubmitText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  disputeWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+
+  disputeWarningText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 19,
+  },
+
+  disputeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 8,
+  },
+
+  disputeCounter: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    textAlign: 'right',
+    marginTop: -10,
+    marginBottom: 14,
+  },
+
+  disputeSubmit: {
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  disputeSubmitDisabled: {
+    opacity: 0.45,
+  },
 });

@@ -279,3 +279,208 @@ Realtime bat: messages, conversations, notifications
 ## VERSION
 Last update: 2026-10-06
 Version: MVP 1.4 (AI tro ly hoan chinh + code block + table converter + latex)
+
+---
+
+## 🛡️ Hệ thống khiếu nại buổi học
+
+Hệ thống cho phép học sinh gửi khiếu nại đối với buổi học và Admin xử lý trực tiếp trong trang quản trị.
+
+### Luồng xử lý
+
+Học sinh gửi khiếu nại:
+
+- `disputes.status = open`
+- `sessions.status = disputed`
+- Admin nhận thông báo có khiếu nại mới.
+
+Nếu Admin CHẤP NHẬN khiếu nại:
+
+- `disputes.status = resolved`
+- `sessions.status = cancelled`
+- Học sinh nhận thông báo kết quả xử lý.
+
+Nếu Admin BÁC BỎ khiếu nại:
+
+- `disputes.status = rejected`
+- `sessions.status = confirmed`
+- Buổi học được công nhận.
+- Gia sư được thanh toán.
+- Học sinh nhận thông báo kết quả.
+- Buổi học auto-confirm sau khi khiếu nại bị bác bỏ không được đánh giá.
+
+### Phía học sinh
+
+- Có nút gửi khiếu nại tại buổi học.
+- Bắt buộc nhập lý do khiếu nại.
+- Không tạo trùng khiếu nại `open` cho cùng buổi học/người gửi.
+- Khi gửi thành công, session chuyển sang `disputed`.
+- Admin được gửi notification.
+
+### Phía Admin
+
+Màn hình quản lý khiếu nại hỗ trợ:
+
+- Xem danh sách khiếu nại.
+- Lọc Chờ xử lý.
+- Lọc Đã chấp nhận.
+- Lọc Đã bác bỏ.
+- Xem tất cả.
+- Xem thông tin học sinh, gia sư, môn học và buổi học.
+- Xem lý do khiếu nại.
+- Nhập ghi chú xử lý.
+- Chấp nhận khiếu nại.
+- Bác bỏ khiếu nại.
+- Refresh danh sách sau khi xử lý.
+
+### Trạng thái disputes
+
+| Status | Ý nghĩa |
+| --- | --- |
+| `open` | Đang chờ Admin xử lý |
+| `resolved` | Admin chấp nhận khiếu nại |
+| `rejected` | Admin bác bỏ khiếu nại |
+
+### Supabase RLS
+
+Bảng `disputes` đang sử dụng Row Level Security.
+
+Các policy cần thiết:
+
+- `disputes_insert`: cho phép tạo khiếu nại.
+- `disputes_select`: cho phép đọc khiếu nại.
+- `disputes_admin_update`: cho phép Admin cập nhật kết quả xử lý.
+
+Lưu ý quan trọng:
+
+Nếu thiếu `disputes_admin_update`, phần course/session và notification có thể đã cập nhật thành công nhưng `disputes.status` vẫn là `open`.
+
+Khi đó màn hình Admin vẫn hiển thị đơn ở mục "Chờ xử lý".
+
+Đây là lỗi đã được phát hiện và bổ sung policy UPDATE cho Admin.
+
+### Các file liên quan
+
+- `lib/disputes.js`
+- `lib/adminSettings.js`
+- `lib/wallet.js`
+- `screens/CourseDetailScreen.js`
+- `screens/admin/DisputesScreen.js`
+
+### Payout khi bác bỏ khiếu nại
+
+Khi Admin bác bỏ:
+
+1. Khiếu nại chuyển sang `rejected`.
+2. Session chuyển sang `confirmed`.
+3. Gia sư được thanh toán cho buổi học.
+4. Phí nền tảng được ghi nhận.
+5. Hệ thống sử dụng `tutor_payout` để nhận biết session đã payout.
+6. Học sinh không được đánh giá session được auto-confirm sau khi khiếu nại bị bác bỏ.
+
+### TODO bảo mật giao dịch
+
+Trước khi triển khai giao dịch tiền thật production, nên chuyển toàn bộ quá trình payout sang PostgreSQL RPC/transaction và bổ sung cơ chế chống double payout ở cấp database.
+
+
+---
+
+## 🛡️ Hệ thống khiếu nại buổi học
+
+Hệ thống cho phép học sinh gửi khiếu nại đối với buổi học và Admin xử lý trực tiếp trong trang quản trị.
+
+### Luồng xử lý
+
+Học sinh gửi khiếu nại:
+
+- `disputes.status = open`
+- `sessions.status = disputed`
+- Admin nhận thông báo có khiếu nại mới.
+
+Nếu Admin CHẤP NHẬN khiếu nại:
+
+- `disputes.status = resolved`
+- `sessions.status = cancelled`
+- Học sinh nhận thông báo kết quả xử lý.
+
+Nếu Admin BÁC BỎ khiếu nại:
+
+- `disputes.status = rejected`
+- `sessions.status = confirmed`
+- Buổi học được công nhận.
+- Gia sư được thanh toán.
+- Học sinh nhận thông báo kết quả.
+- Buổi học auto-confirm sau khi khiếu nại bị bác bỏ không được đánh giá.
+
+### Phía học sinh
+
+- Có nút gửi khiếu nại tại buổi học.
+- Bắt buộc nhập lý do khiếu nại.
+- Không tạo trùng khiếu nại `open` cho cùng buổi học/người gửi.
+- Khi gửi thành công, session chuyển sang `disputed`.
+- Admin được gửi notification.
+
+### Phía Admin
+
+Màn hình quản lý khiếu nại hỗ trợ:
+
+- Xem danh sách khiếu nại.
+- Lọc Chờ xử lý.
+- Lọc Đã chấp nhận.
+- Lọc Đã bác bỏ.
+- Xem tất cả.
+- Xem thông tin học sinh, gia sư, môn học và buổi học.
+- Xem lý do khiếu nại.
+- Nhập ghi chú xử lý.
+- Chấp nhận khiếu nại.
+- Bác bỏ khiếu nại.
+- Refresh danh sách sau khi xử lý.
+
+### Trạng thái disputes
+
+| Status | Ý nghĩa |
+| --- | --- |
+| `open` | Đang chờ Admin xử lý |
+| `resolved` | Admin chấp nhận khiếu nại |
+| `rejected` | Admin bác bỏ khiếu nại |
+
+### Supabase RLS
+
+Bảng `disputes` đang sử dụng Row Level Security.
+
+Các policy cần thiết:
+
+- `disputes_insert`: cho phép tạo khiếu nại.
+- `disputes_select`: cho phép đọc khiếu nại.
+- `disputes_admin_update`: cho phép Admin cập nhật kết quả xử lý.
+
+Lưu ý quan trọng:
+
+Nếu thiếu `disputes_admin_update`, phần course/session và notification có thể đã cập nhật thành công nhưng `disputes.status` vẫn là `open`.
+
+Khi đó màn hình Admin vẫn hiển thị đơn ở mục "Chờ xử lý".
+
+Đây là lỗi đã được phát hiện và bổ sung policy UPDATE cho Admin.
+
+### Các file liên quan
+
+- `lib/disputes.js`
+- `lib/adminSettings.js`
+- `lib/wallet.js`
+- `screens/CourseDetailScreen.js`
+- `screens/admin/DisputesScreen.js`
+
+### Payout khi bác bỏ khiếu nại
+
+Khi Admin bác bỏ:
+
+1. Khiếu nại chuyển sang `rejected`.
+2. Session chuyển sang `confirmed`.
+3. Gia sư được thanh toán cho buổi học.
+4. Phí nền tảng được ghi nhận.
+5. Hệ thống sử dụng `tutor_payout` để nhận biết session đã payout.
+6. Học sinh không được đánh giá session được auto-confirm sau khi khiếu nại bị bác bỏ.
+
+### TODO bảo mật giao dịch
+
+Trước khi triển khai giao dịch tiền thật production, nên chuyển toàn bộ quá trình payout sang PostgreSQL RPC/transaction và bổ sung cơ chế chống double payout ở cấp database.
