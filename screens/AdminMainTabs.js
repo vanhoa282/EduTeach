@@ -12,7 +12,6 @@ import AnnouncementsScreen from './admin/AnnouncementsScreen';
 import CommissionScreen from './admin/CommissionScreen';
 import SystemSettingsScreen from './admin/SystemSettingsScreen';
 import DisputesScreen from './admin/DisputesScreen';
-import ESMSConfigScreen from './admin/ESMSConfigScreen';
 import DeepSeekConfigScreen from './admin/DeepSeekConfigScreen';
 import EditProfileScreen from './profile/EditProfileScreen';
 import ChangePasswordScreen from './profile/ChangePasswordScreen';
@@ -42,7 +41,6 @@ export default function AdminMainTabs({ user: initialUser, onLogout, onBack }) {
   if (subScreen === 'commission') return <CommissionScreen onBack={() => setSubScreen(null)} />;
   if (subScreen === 'settings') return <SystemSettingsScreen onBack={() => setSubScreen(null)} />;
   if (subScreen === 'disputes') return <DisputesScreen onBack={() => setSubScreen(null)} />;
-  if (subScreen === 'esms-config') return <ESMSConfigScreen user={user} onBack={() => setSubScreen(null)} />;
   if (subScreen === 'deepseek-config') return <DeepSeekConfigScreen user={user} onBack={() => setSubScreen(null)} />;
   if (subScreen === 'edit-profile') return <EditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={(u) => { setUser(u); setSubScreen(null); }} />;
   if (subScreen === 'change-password') return <ChangePasswordScreen user={user} onBack={() => setSubScreen(null)} />;

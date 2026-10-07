@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 export default function AdminProfileScreen({ user, onLogout, onOpenScreen }) {
   const items = [
     { key: 'edit-profile', icon: 'person-outline', label: 'Thông tin cá nhân', color: '#3B82F6' },
-    { key: 'esms-config', icon: 'chatbox-ellipses-outline', label: 'Cấu hình eSMS', color: '#F59E0B' },
     { key: 'deepseek-config', icon: 'sparkles-outline', label: 'Cấu hình DeepSeek AI', color: '#7C3AED' },
     { key: 'announcements', icon: 'megaphone-outline', label: 'Thông báo hệ thống', color: '#EC4899' },
     { key: 'commission', icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
