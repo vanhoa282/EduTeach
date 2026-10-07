@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { getTutors } from '../lib/auth';
 import AnnouncementBanner from '../components/AnnouncementBanner';
 import { TutorCardSkeleton } from '../components/Skeleton';
+import { FadeInView } from '../components/Animated';
 
 const categories = [
   { id: 'all', name: 'Tất cả', icon: 'apps-outline', color: '#6B7280', bg: '#F3F4F6' },
@@ -158,9 +159,9 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
             </Text>
           </View>
         ) : (
-          filteredTutors.slice(0, 5).map(tutor => (
+          filteredTutors.slice(0, 5).map((tutor, index) => (
+            <FadeInView key={tutor.id} delay={index * 80}>
             <TouchableOpacity
-              key={tutor.id}
               style={styles.tutorCard}
               activeOpacity={0.75}
               onPress={() => onSelectTutor(tutor)}
@@ -182,6 +183,7 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
                 <Text style={styles.tutorPriceUnit}>/buổi</Text>
               </View>
             </TouchableOpacity>
+            </FadeInView>
           ))
         )}
 

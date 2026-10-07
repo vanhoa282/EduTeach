@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { signInStudent, signUpStudent, signInTutor } from '../lib/auth';
+import { ScaleButton, FadeInView } from '../components/Animated';
 
 export default function AuthScreen({ onLogin }) {
   const [role, setRole] = useState('student');
@@ -13,16 +14,12 @@ export default function AuthScreen({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
 
-  const reset = () => {
-    setPhone(''); setPassword(''); setFullName('');
-  };
-
+  const reset = () => { setPhone(''); setPassword(''); setFullName(''); };
   const switchRole = (r) => { setRole(r); setMode('login'); reset(); };
 
   const handleSubmit = async () => {
     if (phone.length < 10) return Alert.alert('Lỗi', 'SĐT phải 10 số');
     if (password.length < 6) return Alert.alert('Lỗi', 'Mật khẩu phải từ 6 ký tự');
-
     setLoading(true);
     try {
       let result;
@@ -47,73 +44,81 @@ export default function AuthScreen({ onLogin }) {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.logoBox}>
-            <Text style={styles.logo}>📚</Text>
-            <Text style={styles.appName}>EduTeach</Text>
-            <Text style={styles.tagline}>Gia sư tin cậy</Text>
-          </View>
+          <FadeInView delay={100}>
+            <View style={styles.logoBox}>
+              <Text style={styles.logo}>📚</Text>
+              <Text style={styles.appName}>EduTeach</Text>
+              <Text style={styles.tagline}>Gia sư tin cậy</Text>
+            </View>
+          </FadeInView>
 
-          <View style={styles.roleTabs}>
-            <TouchableOpacity style={[styles.roleTab, role === 'student' && styles.roleTabActive]} onPress={() => switchRole('student')}>
-              <Ionicons name="school-outline" size={18} color={role === 'student' ? '#2563EB' : '#9CA3AF'} />
-              <Text style={[styles.roleTabText, role === 'student' && styles.roleTabTextActive]}>Học sinh</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.roleTab, role === 'tutor' && styles.roleTabActive]} onPress={() => switchRole('tutor')}>
-              <Ionicons name="briefcase-outline" size={18} color={role === 'tutor' ? '#2563EB' : '#9CA3AF'} />
-              <Text style={[styles.roleTabText, role === 'tutor' && styles.roleTabTextActive]}>Gia sư</Text>
-            </TouchableOpacity>
-          </View>
+          <FadeInView delay={200}>
+            <View style={styles.roleTabs}>
+              <TouchableOpacity style={[styles.roleTab, role === 'student' && styles.roleTabActive]} onPress={() => switchRole('student')} activeOpacity={0.7}>
+                <Ionicons name="school-outline" size={18} color={role === 'student' ? '#2563EB' : '#9CA3AF'} />
+                <Text style={[styles.roleTabText, role === 'student' && styles.roleTabTextActive]}>Học sinh</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.roleTab, role === 'tutor' && styles.roleTabActive]} onPress={() => switchRole('tutor')} activeOpacity={0.7}>
+                <Ionicons name="briefcase-outline" size={18} color={role === 'tutor' ? '#2563EB' : '#9CA3AF'} />
+                <Text style={[styles.roleTabText, role === 'tutor' && styles.roleTabTextActive]}>Gia sư</Text>
+              </TouchableOpacity>
+            </View>
+          </FadeInView>
 
-          <Text style={styles.title}>
-            {mode === 'signup' ? 'Đăng ký' : 'Đăng nhập'}{role === 'tutor' ? ' Gia sư' : ' Học sinh'}
-          </Text>
-          <Text style={styles.subtitle}>
-            {role === 'tutor'
-              ? 'Tài khoản gia sư do admin tạo. Liên hệ admin nếu chưa có.'
-              : mode === 'signup'
-              ? 'Tạo tài khoản để bắt đầu tìm gia sư'
-              : 'Nhập số điện thoại và mật khẩu để tiếp tục'}
-          </Text>
+          <FadeInView delay={300}>
+            <Text style={styles.title}>
+              {mode === 'signup' ? 'Đăng ký' : 'Đăng nhập'}{role === 'tutor' ? ' Gia sư' : ' Học sinh'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {role === 'tutor'
+                ? 'Tài khoản gia sư do admin tạo. Liên hệ admin nếu chưa có.'
+                : mode === 'signup'
+                ? 'Tạo tài khoản để bắt đầu tìm gia sư'
+                : 'Nhập số điện thoại và mật khẩu để tiếp tục'}
+            </Text>
+          </FadeInView>
 
-          {mode === 'signup' && role === 'student' && (
-            <>
-              <Text style={styles.label}>Họ và tên</Text>
-              <View style={styles.inputBox}>
-                <Ionicons name="person-outline" size={20} color="#9CA3AF" />
-                <TextInput style={styles.input} placeholder="Nguyễn Văn A" value={fullName} onChangeText={setFullName} placeholderTextColor="#9CA3AF" />
-              </View>
-            </>
-          )}
+          <FadeInView delay={400}>
+            {mode === 'signup' && role === 'student' && (
+              <>
+                <Text style={styles.label}>Họ và tên</Text>
+                <View style={styles.inputBox}>
+                  <Ionicons name="person-outline" size={20} color="#9CA3AF" />
+                  <TextInput style={styles.input} placeholder="Nguyễn Văn A" value={fullName} onChangeText={setFullName} placeholderTextColor="#9CA3AF" />
+                </View>
+              </>
+            )}
 
-          <Text style={styles.label}>Số điện thoại</Text>
-          <View style={styles.inputBox}>
-            <Ionicons name="call-outline" size={20} color="#9CA3AF" />
-            <TextInput style={styles.input} placeholder="0901234567" keyboardType="phone-pad" value={phone} onChangeText={setPhone} maxLength={10} placeholderTextColor="#9CA3AF" />
-          </View>
+            <Text style={styles.label}>Số điện thoại</Text>
+            <View style={styles.inputBox}>
+              <Ionicons name="call-outline" size={20} color="#9CA3AF" />
+              <TextInput style={styles.input} placeholder="0901234567" keyboardType="phone-pad" value={phone} onChangeText={setPhone} maxLength={10} placeholderTextColor="#9CA3AF" />
+            </View>
 
-          <Text style={styles.label}>Mật khẩu</Text>
-          <View style={styles.inputBox}>
-            <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
-            <TextInput style={styles.input} placeholder="Tối thiểu 6 ký tự" secureTextEntry={!showPass} value={password} onChangeText={setPassword} placeholderTextColor="#9CA3AF" />
-            <TouchableOpacity onPress={() => setShowPass(!showPass)}>
-              <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.label}>Mật khẩu</Text>
+            <View style={styles.inputBox}>
+              <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
+              <TextInput style={styles.input} placeholder="Tối thiểu 6 ký tự" secureTextEntry={!showPass} value={password} onChangeText={setPassword} placeholderTextColor="#9CA3AF" />
+              <TouchableOpacity onPress={() => setShowPass(!showPass)}>
+                <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
 
-          <TouchableOpacity style={[styles.button, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{mode === 'signup' ? 'Đăng ký' : 'Đăng nhập'}</Text>}
-          </TouchableOpacity>
+            <ScaleButton style={[styles.button, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{mode === 'signup' ? 'Đăng ký' : 'Đăng nhập'}</Text>}
+            </ScaleButton>
 
-          {role === 'student' && (
-            <TouchableOpacity onPress={() => { setMode(mode === 'login' ? 'signup' : 'login'); reset(); }} style={styles.switchMode}>
-              <Text style={styles.switchText}>
-                {mode === 'login' ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
-                <Text style={styles.switchTextBold}>{mode === 'login' ? 'Đăng ký' : 'Đăng nhập'}</Text>
-              </Text>
-            </TouchableOpacity>
-          )}
+            {role === 'student' && (
+              <TouchableOpacity onPress={() => { setMode(mode === 'login' ? 'signup' : 'login'); reset(); }} style={styles.switchMode}>
+                <Text style={styles.switchText}>
+                  {mode === 'login' ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
+                  <Text style={styles.switchTextBold}>{mode === 'login' ? 'Đăng ký' : 'Đăng nhập'}</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
 
-          <Text style={styles.note}>Bằng việc tiếp tục, bạn đồng ý với{'\n'}Điều khoản & Chính sách của EduTeach</Text>
+            <Text style={styles.note}>Bằng việc tiếp tục, bạn đồng ý với{'\n'}Điều khoản & Chính sách của EduTeach</Text>
+          </FadeInView>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
