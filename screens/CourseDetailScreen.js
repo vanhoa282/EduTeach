@@ -15,6 +15,52 @@ const STATUS_CFG = {
   disputed: { label: 'Khiếu nại', color: '#DC2626', bg: '#FEE2E2' },
 };
 
+// Quyền thao tác theo thời gian thực của buổi học
+function getSessionTimeState(session) {
+  const startRaw = session?.scheduled_start || session?.scheduled_at;
+  const endRaw = session?.scheduled_end;
+
+  if (!startRaw) {
+    return {
+      canDispute: false,
+      canConfirm: false,
+      reason: 'Buổi học chưa được xếp lịch',
+    };
+  }
+
+  const start = new Date(startRaw);
+
+  if (Number.isNaN(start.getTime())) {
+    return {
+      canDispute: false,
+      canConfirm: false,
+      reason: 'Thời gian buổi học không hợp lệ',
+    };
+  }
+
+  // Tương thích session cũ: mặc định buổi học kéo dài 2 giờ
+  const end = endRaw
+    ? new Date(endRaw)
+    : new Date(start.getTime() + 2 * 60 * 60 * 1000);
+
+  if (Number.isNaN(end.getTime()) || end <= start) {
+    return {
+      canDispute: false,
+      canConfirm: false,
+      reason: 'Thời gian buổi học không hợp lệ',
+    };
+  }
+
+  const now = new Date();
+
+  return {
+    canDispute: now >= start,
+    canConfirm: now >= end,
+    start,
+    end,
+  };
+}
+
 const SESSION_STATUS = {
   pending: { label: 'Chưa học', color: '#9CA3AF', bg: '#F3F4F6', icon: 'ellipse-outline' },
   confirmed: { label: 'Đã học', color: '#10B981', bg: '#F0FDF4', icon: 'checkmark-circle' },
@@ -67,6 +113,16 @@ export default function CourseDetailScreen({ courseId, onBack }) {
   };
 
   const handleConfirmSession = (session) => {
+    const timeState = getSessionTimeState(session);
+
+    if (!timeState.canConfirm) {
+      return Alert.alert(
+        'Chưa thể xác nhận',
+        timeState.reason ||
+          `Bạn chỉ có thể xác nhận sau khi buổi học kết thúc lúc ${timeState.end.toLocaleString('vi-VN')}.`
+      );
+    }
+
     Alert.alert(
       'Xác nhận buổi học',
       `Buổi ${session.session_number}: Bạn xác nhận đã học với gia sư?`,
@@ -78,15 +134,52 @@ export default function CourseDetailScreen({ courseId, onBack }) {
   };
 
   const doConfirm = async (session) => {
-    const { error } = await supabase
+    // Đọc lại DB ngay trước khi xác nhận, không tin dữ liệu UI cũ
+    const { data: freshSession, error: freshError } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('id', session.id)
+      .maybeSingle();
+
+    if (freshError || !freshSession) {
+      return Alert.alert('Lỗi', freshError?.message || 'Không tìm thấy buổi học.');
+    }
+
+    if (freshSession.status !== 'pending') {
+      await load();
+      return Alert.alert('Không thể xác nhận', 'Trạng thái buổi học đã thay đổi.');
+    }
+
+    const timeState = getSessionTimeState(freshSession);
+
+    if (!timeState.canConfirm) {
+      return Alert.alert(
+        'Chưa thể xác nhận',
+        timeState.reason ||
+          `Bạn chỉ có thể xác nhận sau khi buổi học kết thúc lúc ${timeState.end.toLocaleString('vi-VN')}.`
+      );
+    }
+
+    const { data: updated, error } = await supabase
       .from('sessions')
       .update({
         status: 'confirmed',
         customer_confirmed_at: new Date().toISOString(),
       })
-      .eq('id', session.id);
+      .eq('id', freshSession.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
 
     if (error) return Alert.alert('Lỗi', error.message);
+
+    if (!updated) {
+      await load();
+      return Alert.alert(
+        'Không thể xác nhận',
+        'Buổi học vừa được thay đổi. Vui lòng thử lại.'
+      );
+    }
 
     const payRes = await payTutorForSession(session.id);
     if (payRes.error) console.error('Pay tutor error:', payRes.error);
@@ -158,6 +251,16 @@ export default function CourseDetailScreen({ courseId, onBack }) {
   };
 
   const handleDispute = async (session) => {
+    const timeState = getSessionTimeState(session);
+
+    if (!timeState.canDispute) {
+      return Alert.alert(
+        'Chưa thể khiếu nại',
+        timeState.reason ||
+          `Khiếu nại chỉ mở từ lúc buổi học bắt đầu: ${timeState.start.toLocaleString('vi-VN')}.`
+      );
+    }
+
     const { data: existing, error } = await supabase
       .from('disputes')
       .select('id, status')
@@ -359,23 +462,44 @@ export default function CourseDetailScreen({ courseId, onBack }) {
                   </View>
                 </View>
 
-                {s.status === 'pending' && course.status === 'active' && (
-                  <View style={styles.sessionActions}>
-                    <TouchableOpacity
-                      style={[styles.sessionBtn, { backgroundColor: '#FEF2F2' }]}
-                      onPress={() => handleDispute(s)}
-                    >
-                      <Ionicons name="alert-circle-outline" size={14} color="#EF4444" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.sessionBtn, { backgroundColor: '#10B981' }]}
-                      onPress={() => handleConfirmSession(s)}
-                    >
-                      <Ionicons name="checkmark" size={14} color="#fff" />
-                      <Text style={styles.sessionBtnText}>Xác nhận</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                {s.status === 'pending' && course.status === 'active' && (() => {
+                  const timeState = getSessionTimeState(s);
+
+                  return (
+                    <View style={styles.sessionActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.sessionBtn,
+                          { backgroundColor: '#FEF2F2' },
+                          !timeState.canDispute && { opacity: 0.4 },
+                        ]}
+                        onPress={() => handleDispute(s)}
+                      >
+                        <Ionicons
+                          name={timeState.canDispute ? 'alert-circle-outline' : 'lock-closed-outline'}
+                          size={14}
+                          color="#EF4444"
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.sessionBtn,
+                          { backgroundColor: '#10B981' },
+                          !timeState.canConfirm && { opacity: 0.4 },
+                        ]}
+                        onPress={() => handleConfirmSession(s)}
+                      >
+                        <Ionicons
+                          name={timeState.canConfirm ? 'checkmark' : 'lock-closed-outline'}
+                          size={14}
+                          color="#fff"
+                        />
+                        <Text style={styles.sessionBtnText}>Xác nhận</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })()}
               </View>
             );
           })
