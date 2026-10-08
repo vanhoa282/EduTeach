@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import ErrorCatcher from './components/ErrorCatcher';
 import AuthScreen from './screens/AuthScreen';
+import ModernSplash from './components/ModernSplash';
 import MainTabs from './screens/MainTabs';
 import TutorMainTabs from './screens/TutorMainTabs';
 
@@ -111,15 +112,7 @@ function AppInner() {
   };
 
   if (screen === 'splash') {
-    return (
-      <View style={styles.splashContainer}>
-        <Text style={styles.logo}>📚</Text>
-        <Text style={styles.appName}>EduTeach</Text>
-        <Text style={styles.tagline}>Gia sư tin cậy</Text>
-        <ActivityIndicator color="#2563EB" style={{ marginTop: 20 }} />
-        <StatusBar style="dark" />
-      </View>
-    );
+    return <ModernSplash />;
   }
 
   if (!user) return <AuthScreen onLogin={handleLogin} />;
