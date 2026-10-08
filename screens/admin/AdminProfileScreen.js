@@ -8,6 +8,7 @@ export default function AdminProfileScreen({ user, onLogout, onOpenScreen }) {
     { key: 'deepseek-config', icon: 'sparkles-outline', label: 'Cấu hình DeepSeek AI', color: '#7C3AED' },
     { key: 'announcements', icon: 'megaphone-outline', label: 'Thông báo hệ thống', color: '#EC4899' },
     { key: 'commission', icon: 'cash-outline', label: 'Cấu hình hoa hồng', color: '#10B981' },
+    { key: 'payment-gateway', icon: 'card-outline', label: 'Cấu hình thanh toán', color: '#2563EB' },
     { key: 'settings', icon: 'settings-outline', label: 'Cài đặt hệ thống', color: '#8B5CF6' },
     { key: 'change-password', icon: 'lock-closed-outline', label: 'Bảo mật', color: '#EF4444' },
     { key: 'support', icon: 'headset-outline', label: 'Liên hệ hỗ trợ', color: '#6B7280' },

@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, StyleSheet, AppState } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
-import { getPaymentBank, checkPaymentNow } from '../lib/paymentGateway';
+import { getPaymentBank } from '../lib/paymentGateway';
 import { pickImage, uploadImage } from '../lib/upload';
 
 const BANK_LABELS = {ACB:'ACB - Á Châu', MB:'MB Bank', VCB:'Vietcombank', BIDV:'BIDV'};
@@ -25,9 +25,6 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
   const [billUrl,setBillUrl] = useState('');
   const [timeLeft,setTimeLeft] = useState(1800);
   const [paid,setPaid] = useState(false);
-  const [checkingNow,setCheckingNow] = useState(false);
-  const checkNowRef = useRef(false);
-  const [paymentCheckError,setPaymentCheckError] = useState('');
   const finished = useRef(false);
 
   useEffect(()=>{let mounted=true;(async()=>{
@@ -37,35 +34,14 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
     else setBank(r.bank);
   })();return()=>{mounted=false;};},[]);
 
-  // Tự kiểm tra ngay khi có đơn, mỗi 3 giây và khi quay lại ứng dụng.
-  useEffect(() => {
-    if (!order?.id || paid) return;
-    let active = true;
-    let busy = false;
-    const checkPayment = async () => {
-      if (!active || busy) return;
-      busy = true;
-      try {
-        const { data, error } = await supabase.from('orders')
-          .select('status').eq('id', order.id).maybeSingle();
-        if (!active) return;
-        if (error) setPaymentCheckError('Lỗi đọc trạng thái đơn: ' + error.message);
-        else if (!data) setPaymentCheckError('Chưa đọc được đơn từ Supabase');
-        else {
-          setPaymentCheckError('');
-          if (data.status === 'paid') setPaid(true);
-        }
-      } catch (_) {
-        // Lỗi mạng tạm thời: tiếp tục kiểm tra ở lần sau.
-      } finally { busy = false; }
-    };
-    checkPayment();
-    const timer = setInterval(checkPayment, 3000);
-    const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') checkPayment();
-    });
-    return () => { active = false; clearInterval(timer); subscription.remove(); };
-  }, [order?.id, paid]);
+  useEffect(()=>{
+    if(!order?.id||paid)return;
+    const id=setInterval(async()=>{
+      const {data}=await supabase.from('orders').select('status').eq('id',order.id).maybeSingle();
+      if(data?.status==='paid') {setPaid(true);}
+    },5000);
+    return()=>clearInterval(id);
+  },[order?.id,paid]);
   useEffect(()=>{
     if(!order?.id)return;
     const id=setInterval(()=>{
@@ -73,12 +49,7 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
     },1000);
     return()=>clearInterval(id);
   },[order?.id]);
-  useEffect(() => {
-    if (paid && order?.course_id && !finished.current) {
-      finished.current = true;
-      onSuccess({ id: order.course_id }); // Tự chuyển trang, không cần bấm OK.
-    }
-  }, [paid, order?.course_id, onSuccess]);
+  useEffect(()=>{if(paid&&!finished.current){finished.current=true;Alert.alert('Thanh toán thành công','Khóa học đã được kích hoạt.',[{text:'Đến khóa học',onPress:()=>onSuccess({id:order.course_id})}]);}},[paid,order,onSuccess]);
 
   const copy = async text=>{await Clipboard.setStringAsync(String(text));Alert.alert('Đã sao chép',String(text));};
   const createOrder = async()=>{
@@ -111,30 +82,6 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
       // Orphan pending courses (if any) must be cleaned through controlled admin maintenance.
     } finally {setCreating(false);}
   };
-  // Only a verified bank transaction can activate a course.
-  const confirmPaymentNow = async () => {
-    if (!order?.id || checkNowRef.current || finished.current || paid) return;
-    checkNowRef.current = true;
-    setCheckingNow(true);
-    try {
-      const result = await checkPaymentNow(order.id, order.order_code);
-      if (result.status === 'paid') {
-        setPaid(true); // Existing effect calls onSuccess and navigates immediately.
-      } else if (result.status === 'not_paid') {
-        Alert.alert('Giao Dịch Chưa Thanh Toán', 'Chưa tìm thấy giao dịch hợp lệ. Kiểm tra đúng số tiền và nội dung chuyển khoản, sau đó thử lại. Không chuyển tiền lần hai nếu ngân hàng đã trừ tiền.');
-      } else if (result.status === 'rate_limited') {
-        Alert.alert('Vui lòng chờ', 'Bạn vừa kiểm tra. Hãy chờ khoảng 8 giây rồi bấm lại.');
-      } else {
-        Alert.alert('Chưa thể kiểm tra thanh toán', result.message || 'Lỗi kết nối. Thử lại sau; không cần chuyển tiền lần nữa.');
-      }
-    } catch (_) {
-      Alert.alert('Lỗi xác minh', 'Không kết nối được máy chủ. Thử lại sau; không cần chuyển tiền lần nữa.');
-    } finally {
-      checkNowRef.current = false;
-      setCheckingNow(false);
-    }
-  };
-
   const uploadBill = async()=>{
     if(!order?.id||uploading)return;
     const r=await pickImage();
@@ -184,17 +131,11 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
         </View>}
         <View style={s.card}>
           <Text style={s.section}>Xác nhận thanh toán</Text>
-          <Text style={s.tip}>Sau khi chuyển khoản thành công trên ứng dụng ngân hàng, bấm nút bên dưới để hệ thống kiểm tra API5S ngay lập tức.</Text>
-          <TouchableOpacity
-            style={[s.button, (checkingNow || paid) && s.disabled]}
-            disabled={checkingNow || paid}
-            onPress={confirmPaymentNow}
-            accessibilityRole="button"
-            accessibilityLabel="Tôi Đã Thanh Toán">
-            {checkingNow ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Tôi Đã Thanh Toán</Text>}
+          <Text style={s.tip}>Hệ thống tự kiểm tra giao dịch nếu ngân hàng đã được kết nối. Trường hợp chưa tự xác nhận, bạn có thể gửi ảnh bill để Admin kiểm tra.</Text>
+          <TouchableOpacity style={[s.button,s.outline]} disabled={uploading} onPress={uploadBill}>
+            <Text style={s.outlineText}>{uploading?'Đang tải bill...':billUrl?'✓ Đã gửi bill - gửi lại':'Gửi ảnh bill (tùy chọn)'}</Text>
           </TouchableOpacity>
-          {checkingNow && <Text style={s.hint}>Đang kiểm tra giao dịch ngân hàng, vui lòng chờ...</Text>}
-          {!!paymentCheckError && <Text style={s.error}>{paymentCheckError}</Text>}
+          <TouchableOpacity style={s.button} onPress={goCourses}><Text style={s.buttonText}>Theo dõi trạng thái khóa học</Text></TouchableOpacity>
         </View>
       </>}
     </ScrollView>
