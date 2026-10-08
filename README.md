@@ -549,3 +549,76 @@ Lưu ý:
 - Không commit Firebase Admin SDK private key, service-role key hoặc webhook secret lên GitHub.
 - Cần kiểm thử riêng thông báo Admin, thông báo hệ thống và điều hướng khi chạm thông báo.
 
+
+---
+
+## EDUTEACH INVOICE MANAGEMENT 2026
+
+### Student invoice management
+- Entry point: PaymentScreen, directly below "Tạo mã đơn và QR chuyển khoản".
+- The invoice list is scoped to the student account, not the selected tutor.
+- UI component: components/InvoiceManager.js.
+- Notification modal: components/PaymentNotice.js.
+- Statistics: total invoices, paid, pending, cancelled/expired.
+- Revenue statistics count paid invoices only.
+- Pending invoices display a countdown and cancellation option.
+- Paid invoices remain in the history and cannot be cancelled.
+
+### Payment workflow
+1. Student selects a tutor and creates a course booking.
+2. App creates a pending course and payment order.
+3. The order receives a unique EDT payment reference.
+4. Student pays using the VietQR information.
+5. The existing bank reconciliation system verifies the payment.
+6. A verified payment activates the corresponding course.
+
+### Invoice rules
+- Maximum 2 pending invoices per student account.
+- Pending invoices expire after 30 minutes.
+- Expired invoices are marked cancelled and retained in history.
+- Manual cancellation requires a per-invoice secret.
+- Newly created invoices store a hash of the cancellation secret.
+- The cancellation secret is kept locally using AsyncStorage.
+- Legacy invoices without a secret cannot be cancelled using this method.
+- Never automatically treat an unverified bank transfer as unpaid forever.
+- Late bank reconciliation and expired payments require careful handling.
+
+### Supabase
+Relevant database objects:
+- public.orders
+- public.enforce_eduteach_invoice_limit()
+- public.expire_eduteach_invoices()
+- public.cancel_eduteach_invoice(uuid, text)
+- public.guard_eduteach_invoice_payment()
+
+The expiration task is scheduled using pg_cron.
+
+Important: Database SQL must be applied separately in Supabase.
+Git backup does not back up the live Supabase database, SQL functions,
+cron configuration or deployed Edge Functions.
+
+### Security and production readiness
+- Do not expose database errors, API provider names, stack traces or tokens
+  in customer-facing messages.
+- Never use a client-supplied student_id as the sole authorization mechanism.
+- Verify server-side access controls for invoice listing before production.
+- Cancellation secrets must never be written to logs or Git.
+- Test payment reconciliation near the 30-minute expiration boundary.
+- Validate that late confirmed transfers are not lost.
+- Test all invoice states before production release.
+
+### Development on Termux
+cd ~/projects/EduTeach
+EXPO_NO_DEVTOOLS=1 npx expo start --dev-client --lan --clear
+
+### Release checklist
+- [ ] Verify student invoice isolation and authorization.
+- [ ] Verify invoice management opens from PaymentScreen.
+- [ ] Verify invoices across multiple tutors appear together.
+- [ ] Verify 2-pending-invoice limit.
+- [ ] Verify automatic expiration after 30 minutes.
+- [ ] Verify manual cancellation with a valid secret.
+- [ ] Verify paid invoices cannot be cancelled.
+- [ ] Verify late bank transaction reconciliation.
+- [ ] Verify customer-facing messages contain no technical details.
+- [ ] Test on Android Dev Build before production release.

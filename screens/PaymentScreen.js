@@ -1,3 +1,6 @@
+import InvoiceManager from '../components/InvoiceManager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import PaymentNotice from '../components/PaymentNotice';
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, StyleSheet, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +32,26 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
   const checkNowRef = useRef(false);
   const [paymentCheckError,setPaymentCheckError] = useState('');
   const finished = useRef(false);
+  const [notice, setNotice] = useState(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+
+  const showNotice = (title, message, type = 'info') => {
+    const raw = String(message || '');
+
+    let safe = raw;
+
+    if (raw.includes('LIMIT_2_PENDING_INVOICES')) {
+      safe = 'Bạn đang có 2 hóa đơn chờ thanh toán. Vui lòng vào Quản Lý Hóa Đơn để xử lý trước khi tạo mới.';
+    } else if (raw.includes('INVOICE_NOT_PAYABLE')) {
+      safe = 'Hóa đơn đã hết hạn hoặc không còn hiệu lực. Vui lòng tạo hóa đơn mới.';
+    } else if (
+      /Supabase|API5S|RPC|SQL|403|500|PGRST|permission denied|duplicate key|violates|date_only_no_time|network request failed/i.test(raw)
+    ) {
+      safe = 'Hệ thống đang tạm thời gián đoạn. Vui lòng thử lại sau.';
+    }
+
+    setNotice({ title, message: safe, type });
+  };
 
   useEffect(()=>{let mounted=true;(async()=>{
     const r=await getPaymentBank();
@@ -49,8 +72,8 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
         const { data, error } = await supabase.from('orders')
           .select('status').eq('id', order.id).maybeSingle();
         if (!active) return;
-        if (error) setPaymentCheckError('Lỗi đọc trạng thái đơn: ' + error.message);
-        else if (!data) setPaymentCheckError('Chưa đọc được đơn từ Supabase');
+        if (error) setPaymentCheckError('Chưa thể cập nhật trạng thái thanh toán. Hệ thống sẽ tự thử lại.');
+        else if (!data) setPaymentCheckError('Chưa thể cập nhật hóa đơn. Vui lòng chờ trong giây lát.');
         else {
           setPaymentCheckError('');
           if (data.status === 'paid') setPaid(true);
@@ -80,7 +103,7 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
     }
   }, [paid, order?.course_id, onSuccess]);
 
-  const copy = async text=>{await Clipboard.setStringAsync(String(text));Alert.alert('Đã sao chép',String(text));};
+  const copy = async text=>{await Clipboard.setStringAsync(String(text));showNotice('Đã sao chép',String(text));};
   const createOrder = async()=>{
     if(!bank?.ready || !user?.id || !tutor?.id || creating)return;
     setCreating(true);
@@ -98,16 +121,30 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
       }).select('id').single();
       if(courseErr)throw courseErr;
       courseId=course.id;
+      const secretBytes = Crypto.getRandomBytes(32);
+      const secret = Array.from(secretBytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const secretHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        secret
+      );
+
       const code=newOrderCode();
       const expires=new Date(Date.now()+30*60*1000).toISOString();
       const {data:newOrder,error:orderErr}=await supabase.from('orders').insert({
         order_code:code,student_id:user.id,course_id:courseId,amount:booking.payNow,
-        status:'pending',expires_at:expires,
+        status:'pending',expires_at:expires,cancel_secret_hash:secretHash,
       }).select('id,order_code,course_id,amount,expires_at').single();
       if(orderErr)throw orderErr;
+      await AsyncStorage.setItem(
+        '@eduteach_invoice_secret_' + newOrder.id,
+        secret
+      );
       setOrder(newOrder);
     } catch(e) {
-      Alert.alert('Chưa tạo được đơn',e?.message||'Lỗi hệ thống. Không chuyển tiền khi chưa có mã đơn.');
+      showNotice('Chưa tạo được đơn',e?.message||'Lỗi hệ thống. Không chuyển tiền khi chưa có mã đơn.');
       // Orphan pending courses (if any) must be cleaned through controlled admin maintenance.
     } finally {setCreating(false);}
   };
@@ -121,14 +158,14 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
       if (result.status === 'paid') {
         setPaid(true); // Existing effect calls onSuccess and navigates immediately.
       } else if (result.status === 'not_paid') {
-        Alert.alert('Giao Dịch Chưa Thanh Toán', 'Chưa tìm thấy giao dịch hợp lệ. Kiểm tra đúng số tiền và nội dung chuyển khoản, sau đó thử lại. Không chuyển tiền lần hai nếu ngân hàng đã trừ tiền.');
+        showNotice('Giao Dịch Chưa Thanh Toán', 'Chưa tìm thấy giao dịch hợp lệ. Kiểm tra đúng số tiền và nội dung chuyển khoản, sau đó thử lại. Không chuyển tiền lần hai nếu ngân hàng đã trừ tiền.');
       } else if (result.status === 'rate_limited') {
-        Alert.alert('Vui lòng chờ', 'Bạn vừa kiểm tra. Hãy chờ khoảng 8 giây rồi bấm lại.');
+        showNotice('Vui lòng chờ', 'Bạn vừa kiểm tra. Hãy chờ khoảng 8 giây rồi bấm lại.');
       } else {
-        Alert.alert('Chưa thể kiểm tra thanh toán', result.message || 'Lỗi kết nối. Thử lại sau; không cần chuyển tiền lần nữa.');
+        showNotice('Chưa thể kiểm tra thanh toán', result.message || 'Lỗi kết nối. Thử lại sau; không cần chuyển tiền lần nữa.');
       }
     } catch (_) {
-      Alert.alert('Lỗi xác minh', 'Không kết nối được máy chủ. Thử lại sau; không cần chuyển tiền lần nữa.');
+      showNotice('Lỗi xác minh', 'Không kết nối được máy chủ. Thử lại sau; không cần chuyển tiền lần nữa.');
     } finally {
       checkNowRef.current = false;
       setCheckingNow(false);
@@ -139,7 +176,7 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
     if(!order?.id||uploading)return;
     const r=await pickImage();
     if(r.cancelled)return;
-    if(r.error)return Alert.alert('Lỗi',r.error);
+    if(r.error)return showNotice('Lỗi',r.error);
     setUploading(true);
     try {
       const uploaded=await uploadImage({uri:r.uri,bucket:'bills',folder:order.order_code});
@@ -147,12 +184,31 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
       const {error}=await supabase.from('orders').update({bill_url:uploaded.url}).eq('id',order.id).eq('status','pending');
       if(error)throw error;
       setBillUrl(uploaded.url);
-      Alert.alert('Đã gửi bill','Admin có thể kiểm tra nếu đối soát tự động không thành công.');
-    } catch(e){Alert.alert('Lỗi upload',e.message||'Không gửi được bill');}
+      showNotice('Đã gửi bill','Bộ phận hỗ trợ sẽ kiểm tra nếu giao dịch chưa được xác nhận tự động.');
+    } catch(e){showNotice('Lỗi upload',e.message||'Không gửi được bill');}
     finally {setUploading(false);}
   };
   const qr = order&&bank?`https://img.vietqr.io/image/${encodeURIComponent(bank.bank_code)}-${encodeURIComponent(bank.account_number)}-compact2.png?amount=${encodeURIComponent(String(order.amount))}&addInfo=${encodeURIComponent(order.order_code)}&accountName=${encodeURIComponent(bank.account_holder)}`:null;
   const goCourses =()=>onSuccess({id:order.course_id});
+  if (invoiceOpen) {
+    return (
+      <SafeAreaView style={s.root} edges={['top']}>
+        <InvoiceManager
+          studentId={user?.id}
+          onClose={() => setInvoiceOpen(false)}
+          onNotice={showNotice}
+        />
+        <PaymentNotice
+          visible={!!notice}
+          title={notice?.title}
+          message={notice?.message}
+          type={notice?.type}
+          onClose={() => setNotice(null)}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return <SafeAreaView style={s.root} edges={['top']}>
     <View style={s.top}><TouchableOpacity onPress={onBack}><Ionicons name="arrow-back" color="#0F172A" size={24}/></TouchableOpacity>
       <Text style={s.title}>Thanh toán khóa học</Text><View style={{width:24}}/></View>
@@ -165,6 +221,50 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
         {bank?<Text style={s.hint}>Ngân hàng: {BANK_LABELS[bank.bank_code]||bank.bank_code} · {bank.account_holder}</Text>:<Text style={s.error}>{bankError||'Đang tải thông tin ngân hàng...'}</Text>}
         <TouchableOpacity style={[s.button,(!bank||creating)&&s.disabled]} disabled={!bank||creating} onPress={createOrder}>
           {creating?<ActivityIndicator color="#fff"/>:<Text style={s.buttonText}>Tạo mã đơn và QR chuyển khoản</Text>}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{
+            marginTop: 12,
+            borderWidth: 1,
+            borderColor: '#BFDBFE',
+            backgroundColor: '#EFF6FF',
+            borderRadius: 15,
+            padding: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+          }}
+          onPress={() => setInvoiceOpen(true)}
+        >
+          <Ionicons
+            name="receipt-outline"
+            size={26}
+            color="#2563EB"
+          />
+
+          <View style={{ flex: 1 }}>
+            <Text style={{
+              color: '#1D4ED8',
+              fontSize: 16,
+              fontWeight: '800',
+            }}>
+              Quản Lý Hóa Đơn
+            </Text>
+            <Text style={{
+              color: '#64748B',
+              fontSize: 12,
+              marginTop: 4,
+            }}>
+              Tất cả hóa đơn · Mọi gia sư
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-forward"
+            size={22}
+            color="#2563EB"
+          />
         </TouchableOpacity>
       </View> : <>
         <View style={s.card}>
@@ -182,9 +282,42 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
           <Text style={s.label}>Nội dung chuyển khoản</Text><TouchableOpacity onPress={()=>copy(order.order_code)}><Text style={s.value}>{order.order_code} <Ionicons name="copy-outline" size={15}/></Text></TouchableOpacity>
           <Text style={s.warning}>Chỉ chuyển đúng {fmt(order.amount)} với nội dung {order.order_code}. Không gửi lại tiền cho cùng đơn nếu app chưa cập nhật.</Text>
         </View>}
+        <TouchableOpacity
+          style={[
+            s.card,
+            {
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            },
+          ]}
+          onPress={() => setInvoiceOpen(true)}
+        >
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+          }}>
+            <Ionicons
+              name="receipt-outline"
+              size={23}
+              color="#2563EB"
+            />
+            <Text style={s.section}>
+              Quản Lý Hóa Đơn
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-forward"
+            size={21}
+            color="#64748B"
+          />
+        </TouchableOpacity>
+
         <View style={s.card}>
           <Text style={s.section}>Xác nhận thanh toán</Text>
-          <Text style={s.tip}>Sau khi chuyển khoản thành công trên ứng dụng ngân hàng, bấm nút bên dưới để hệ thống kiểm tra API5S ngay lập tức.</Text>
+          <Text style={s.tip}>Sau khi chuyển khoản thành công trên ứng dụng ngân hàng, bấm nút bên dưới để hệ thống xác nhận giao dịch.</Text>
           <TouchableOpacity
             style={[s.button, (checkingNow || paid) && s.disabled]}
             disabled={checkingNow || paid}
@@ -198,6 +331,14 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
         </View>
       </>}
     </ScrollView>
+
+    <PaymentNotice
+      visible={!!notice}
+      title={notice?.title}
+      message={notice?.message}
+      type={notice?.type}
+      onClose={() => setNotice(null)}
+    />
   </SafeAreaView>;
 }
 const s=StyleSheet.create({

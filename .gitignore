@@ -46,3 +46,14 @@ yarn-error.*
 .env
 .env.*
 !.env.example
+
+# Local secrets and backups
+.env
+.env.*
+!.env.example
+*.backup-*
+*.before-invoices-*
+*.bak
+*.log
+node_modules/
+.expo/
