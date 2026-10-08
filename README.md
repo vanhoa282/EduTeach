@@ -484,3 +484,68 @@ Khi Admin bác bỏ:
 ### TODO bảo mật giao dịch
 
 Trước khi triển khai giao dịch tiền thật production, nên chuyển toàn bộ quá trình payout sang PostgreSQL RPC/transaction và bổ sung cơ chế chống double payout ở cấp database.
+
+---
+
+## 🔔 Push Notification Android
+
+EduTeach hỗ trợ thông báo đẩy Android qua Expo Notifications, Firebase Cloud Messaging (FCM V1) và Supabase Edge Functions.
+
+### Chức năng
+
+- Tin nhắn mới: thông báo cho người nhận khi ứng dụng chạy nền.
+- Thông báo Admin: hỗ trợ gửi đến tất cả (`all`), học sinh (`student`) hoặc gia sư (`tutor`).
+- Thông báo hệ thống: gửi đến tài khoản được chỉ định.
+- Nội dung thông báo xuất hiện trên thanh trạng thái Android.
+
+### Kiến trúc
+
+1. Ứng dụng xin quyền thông báo và lấy Expo Push Token.
+2. Token được lưu vào `public.users.push_token`.
+3. Supabase Database Webhook nhận sự kiện INSERT.
+4. Edge Function `push-webhook` xác định người nhận.
+5. Expo Push Service chuyển thông báo qua FCM đến Android.
+
+### Database Webhooks
+
+| Webhook | Bảng | Event |
+| --- | --- | --- |
+| `push_messages` | `public.messages` | INSERT |
+| `push_announcements` | `public.announcements` | INSERT |
+| `push_notifications` | `public.notifications` | INSERT |
+
+Cả ba webhook gọi:
+
+`https://jrkqfalwcleetppqtcvb.supabase.co/functions/v1/push-webhook`
+
+- Method: `POST`
+- Header: `Content-Type: application/json`
+- Header: `x-eduteach-webhook-secret` với giá trị trùng secret trên Supabase.
+
+### Cấu hình Supabase
+
+- Edge Function: `push-webhook`
+- Verify JWT: OFF (function xác thực webhook bằng secret riêng).
+- Secret: `PUSH_WEBHOOK_SECRET`
+- Function sử dụng biến môi trường Supabase để truy vấn người nhận.
+
+### Các file liên quan
+
+- `lib/notifications.js`
+- `App.js`
+- `supabase/functions/push-webhook/index.ts`
+- `lib/announce.js`
+- `screens/admin/AnnouncementsScreen.js`
+- `components/AnnouncementBanner.js`
+
+### Kiểm thử
+
+Đã xác nhận thông báo tin nhắn mới xuất hiện trên thanh thông báo Android.
+
+Lưu ý:
+- Mỗi thiết bị phải cấp quyền thông báo và đăng ký push token.
+- Tài khoản chưa có token sẽ không nhận push trên thiết bị.
+- Database Webhooks và Edge Function Secrets được cấu hình trên Supabase, không tự đồng bộ theo Git.
+- Không commit Firebase Admin SDK private key, service-role key hoặc webhook secret lên GitHub.
+- Cần kiểm thử riêng thông báo Admin, thông báo hệ thống và điều hướng khi chạm thông báo.
+
