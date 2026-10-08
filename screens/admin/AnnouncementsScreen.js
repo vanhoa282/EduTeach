@@ -19,6 +19,7 @@ export default function AnnouncementsScreen({ user }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [type, setType] = useState('info');
+  const [audience, setAudience] = useState('all');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -39,13 +40,13 @@ export default function AnnouncementsScreen({ user }) {
     if (!title.trim()) return Alert.alert('Lỗi', 'Nhập tiêu đề');
     setSaving(true);
     const res = await adminCreateAnnouncement({
-      title, content, type, userId: user.id,
+      title, content, type, audience, userId: user.id,
     });
     setSaving(false);
     if (res.error) return Alert.alert('Lỗi', res.error);
     setShowModal(false);
-    setTitle(''); setContent(''); setType('info');
-    Alert.alert('Đã tạo', 'Thông báo sẽ hiện cho tất cả user');
+    setTitle(''); setContent(''); setType('info'); setAudience('all');
+    Alert.alert('Đã tạo', 'Thông báo đã được đăng cho nhóm đã chọn.');
     load();
   };
 
@@ -130,6 +131,7 @@ export default function AnnouncementsScreen({ user }) {
                 <Text style={styles.itemContent} numberOfLines={3}>{item.content}</Text>
               )}
 
+              <Text style={styles.itemTime}>Người nhận: {item.audience === 'student' ? 'Học sinh' : item.audience === 'tutor' ? 'Gia sư' : 'Tất cả'}</Text>
               <View style={styles.cardFooter}>
                 <View style={[styles.typeBadge, { backgroundColor: cfg.bg }]}>
                   <Text style={[styles.typeText, { color: cfg.color }]}>{cfg.label}</Text>
@@ -172,6 +174,14 @@ export default function AnnouncementsScreen({ user }) {
               ))}
             </View>
 
+            <Text style={styles.label}>Người nhận</Text>
+            <View style={styles.typeRow}>
+              {[{key:'all',label:'Tất cả'},{key:'student',label:'Học sinh'},{key:'tutor',label:'Gia sư'}].map(a => (
+                <TouchableOpacity key={a.key} style={[styles.typeBtn, audience === a.key && {backgroundColor:'#EDE9FE',borderColor:'#7C3AED'}]} onPress={() => setAudience(a.key)}>
+                  <Text style={styles.typeBtnText}>{a.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <Text style={styles.label}>Tiêu đề</Text>
             <TextInput
               style={styles.input}

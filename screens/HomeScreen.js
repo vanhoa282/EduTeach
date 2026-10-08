@@ -75,7 +75,7 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
           </TouchableOpacity>
         </View>
 
-        <AnnouncementBanner />
+        <AnnouncementBanner user={user} />
 
         <Text style={styles.hero}>Tìm gia sư phù hợp{'\n'}cho con bạn</Text>
 

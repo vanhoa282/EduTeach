@@ -13,7 +13,7 @@ const TYPE_CFG = {
 
 const DISMISS_KEY = '@eduteach_dismissed_announcements';
 
-export default function AnnouncementBanner() {
+export default function AnnouncementBanner({ user }) {
   const [items, setItems] = useState([]);
   const [dismissed, setDismissed] = useState([]);
   const [detail, setDetail] = useState(null);
@@ -24,10 +24,10 @@ export default function AnnouncementBanner() {
       const dis = stored ? JSON.parse(stored) : [];
       setDismissed(dis);
 
-      const list = await getActiveAnnouncements(5);
+      const list = await getActiveAnnouncements(5, user?.role);
       setItems(list.filter(a => !dis.includes(a.id)));
     })();
-  }, []);
+  }, [user?.role]);
 
   const handleDismiss = async (id) => {
     const next = [...dismissed, id];

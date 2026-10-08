@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "895894178170",
+    "project_id": "eduteach-2ace8",
+    "storage_bucket": "eduteach-2ace8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:895894178170:android:a0549e15bf56d141adaec3",
+        "android_client_info": {
+          "package_name": "com.vanhoa282.eduteach"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfkOYHL-1KTV8uvoFPp3Q5es0a2CWu68Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -16,7 +16,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#2563EB"
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "ios": {
       "supportsTablet": true,
@@ -24,7 +25,8 @@
     },
     "android": {
       "package": "com.vanhoa282.eduteach",
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"

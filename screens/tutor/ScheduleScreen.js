@@ -98,7 +98,7 @@ export default function ScheduleScreen({ user }) {
           </View>
         </View>
 
-        <AnnouncementBanner />
+        <AnnouncementBanner user={user} />
 
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
