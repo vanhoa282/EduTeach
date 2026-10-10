@@ -1,11 +1,21 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AUTH_SESSION_KEY } from '../lib/auth/serverLogin';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { payTutorForSession } from '../lib/wallet';
 import { createNotification } from '../lib/notif';
 import { createDispute } from '../lib/disputes';
+import { getMySlots } from '../lib/tutorSchedule';
+import { listFreeSlots } from '../lib/booking/availability';
+import {
+  sameWeekdaySlots,
+  slotKey,
+  vnPartsFromIso,
+  formatSlotPreview,
+} from '../lib/booking/schedule';
 
 const STATUS_CFG = {
   pending_payment: { label: 'Chờ thanh toán', color: '#F59E0B', bg: '#FFFBEB' },
@@ -61,6 +71,31 @@ function getSessionTimeState(session) {
   };
 }
 
+// Cửa sổ vào lớp: mở 15 phút trước giờ học, đóng 30 phút sau khi kết thúc.
+function getJoinWindow(session) {
+  const timeState = getSessionTimeState(session);
+  if (!timeState.start) {
+    return { open: false, hint: 'Buổi học chưa được xếp lịch' };
+  }
+
+  const start = timeState.start;
+  const end = timeState.end;
+  const now = Date.now();
+  const opensAt = start.getTime() - 15 * 60 * 1000;
+  const closesAt = end.getTime() + 30 * 60 * 1000;
+
+  if (now < opensAt) {
+    return {
+      open: false,
+      hint: `Mở vào lớp từ ${new Date(opensAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}`,
+    };
+  }
+  if (now > closesAt) {
+    return { open: false, hint: 'Buổi học đã kết thúc' };
+  }
+  return { open: true, hint: '' };
+}
+
 const SESSION_STATUS = {
   pending: { label: 'Chưa học', color: '#9CA3AF', bg: '#F3F4F6', icon: 'ellipse-outline' },
   confirmed: { label: 'Đã học', color: '#10B981', bg: '#F0FDF4', icon: 'checkmark-circle' },
@@ -69,7 +104,7 @@ const SESSION_STATUS = {
   cancelled: { label: 'Đã huỷ', color: '#6B7280', bg: '#F3F4F6', icon: 'close-circle' },
 };
 
-export default function CourseDetailScreen({ courseId, onBack }) {
+export default function CourseDetailScreen({ courseId, onBack, onJoinClass }) {
   const [course, setCourse] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +117,14 @@ export default function CourseDetailScreen({ courseId, onBack }) {
   const [disputeModal, setDisputeModal] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
+
+  // ===== HUỶ BUỔI / ĐỔI GIỜ =====
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [reschedModal, setReschedModal] = useState(null);
+  const [reschedSlots, setReschedSlots] = useState([]);
+  const [reschedError, setReschedError] = useState('');
+  const [reschedLoading, setReschedLoading] = useState(false);
+  const [reschedSubmitting, setReschedSubmitting] = useState(false);
 
   const load = async () => {
     const { data: c, error: cErr } = await supabase
@@ -323,6 +366,185 @@ export default function CourseDetailScreen({ courseId, onBack }) {
     );
   };
 
+  // ===== HUỶ BUỔI TRƯỚC 24H =====
+  const handleCancelSession = (session) => {
+    const timeState = getSessionTimeState(session);
+
+    if (!timeState.start) {
+      return Alert.alert('Không thể huỷ', 'Buổi học chưa được xếp lịch.');
+    }
+
+    const hoursLeft = (timeState.start.getTime() - Date.now()) / 3600000;
+
+    if (hoursLeft < 24) {
+      return Alert.alert(
+        'Quá hạn huỷ buổi',
+        'Chỉ được huỷ buổi trước giờ học ít nhất 24 giờ. Cần hỗ trợ gấp, hãy liên hệ Admin.'
+      );
+    }
+
+    Alert.alert(
+      'Huỷ buổi học',
+      `Buổi ${session.session_number} · ${timeState.start.toLocaleString('vi-VN')}\nSau khi huỷ, gia sư sẽ được thông báo và khung giờ được trả về lịch trống.`,
+      [
+        { text: 'Giữ buổi', style: 'cancel' },
+        { text: 'Huỷ buổi', style: 'destructive', onPress: () => doCancelSession(session) },
+      ]
+    );
+  };
+
+  const doCancelSession = async (session) => {
+    if (cancelSubmitting) return;
+    setCancelSubmitting(true);
+
+    const token = await AsyncStorage.getItem(AUTH_SESSION_KEY);
+    const { data, error } = await supabase.rpc('eduteach_cancel_session', {
+      p_session_id: session.id,
+      p_user_id: course?.student_id,
+    }, token ? { headers: { 'x-eduteach-session': token } } : {});
+
+    setCancelSubmitting(false);
+
+    if (error) {
+      if (
+        error.code === 'PGRST202' ||
+        /Could not find the function/i.test(error.message || '')
+      ) {
+        return Alert.alert(
+          'Cần cập nhật SQL',
+          'Chức năng huỷ buổi cần chạy file supabase/sql/03_classroom_cancel_reschedule.sql trên Supabase SQL Editor.'
+        );
+      }
+      return Alert.alert('Không thể huỷ buổi', error.message);
+    }
+
+    if (!data?.ok) {
+      await load();
+      return Alert.alert('Không thể huỷ buổi', data?.message || 'Buổi học vừa thay đổi trạng thái.');
+    }
+
+    if (course?.tutor?.id) {
+      await createNotification({
+        userId: course.tutor.id,
+        title: 'Học sinh đã huỷ một buổi học',
+        body: `Buổi ${session.session_number} môn ${course.subject} đã được huỷ trước 24 giờ. Khung giờ đã được trả về lịch trống.`,
+        type: 'session',
+        refId: session.id,
+      });
+    }
+
+    Alert.alert('Đã huỷ buổi', 'Buổi học đã được huỷ và gia sư sẽ được thông báo.');
+    await load();
+  };
+
+  // ===== ĐỔI GIỜ BUỔI (giữ nguyên các buổi khác) =====
+  const handleResched = async (session) => {
+    const timeState = getSessionTimeState(session);
+
+    if (!timeState.start) {
+      return Alert.alert('Không thể đổi giờ', 'Buổi học chưa được xếp lịch.');
+    }
+
+    if (timeState.start.getTime() - Date.now() < 24 * 3600000) {
+      return Alert.alert(
+        'Quá hạn đổi giờ',
+        'Chỉ đổi giờ buổi trước giờ học ít nhất 24 giờ.'
+      );
+    }
+
+    setReschedModal(session);
+    setReschedSlots([]);
+    setReschedError('');
+    setReschedLoading(true);
+
+    try {
+      const tutorSlots = await getMySlots(course?.tutor_id);
+      const hasHours = Object.values(tutorSlots || {}).some(
+        hours => Array.isArray(hours) && hours.length > 0
+      );
+
+      if (!hasHours) {
+        setReschedSlots([]);
+        setReschedError('Gia sư chưa mở lịch rảnh nên không có khung giờ thay thế.');
+        return;
+      }
+
+      const free = await listFreeSlots(course.tutor_id, tutorSlots, new Date());
+      const current = {
+        start_at: session.scheduled_start || session.scheduled_at,
+        end_at: session.scheduled_end,
+      };
+      const parts = vnPartsFromIso(current.start_at);
+      const others = sessions.filter(
+        s => s.id !== session.id && s.status !== 'cancelled'
+      );
+
+      const options = sameWeekdaySlots(
+        free,
+        parts?.weekday ?? -1,
+        [slotKey(current)],
+        others
+          .filter(s => s.scheduled_start)
+          .map(s => ({ start_at: s.scheduled_start, end_at: s.scheduled_end }))
+      );
+
+      setReschedSlots(options);
+    } catch (e) {
+      setReschedSlots([]);
+      setReschedError(e?.message || 'Không tải được danh sách khung giờ trống.');
+    } finally {
+      setReschedLoading(false);
+    }
+  };
+
+  const applyResched = async (newSlot) => {
+    if (!reschedModal || reschedSubmitting) return;
+    setReschedSubmitting(true);
+
+    const token = await AsyncStorage.getItem(AUTH_SESSION_KEY);
+    const { data, error } = await supabase.rpc('eduteach_reschedule_session', {
+      p_session_id: reschedModal.id,
+      p_user_id: course?.student_id,
+      p_new_start: newSlot.start_at,
+      p_new_end: newSlot.end_at,
+    }, token ? { headers: { 'x-eduteach-session': token } } : {});
+
+    setReschedSubmitting(false);
+
+    if (error) {
+      if (
+        error.code === 'PGRST202' ||
+        /Could not find the function/i.test(error.message || '')
+      ) {
+        return Alert.alert(
+          'Cần cập nhật SQL',
+          'Chức năng đổi giờ cần chạy file supabase/sql/03_classroom_cancel_reschedule.sql trên Supabase SQL Editor.'
+        );
+      }
+      return Alert.alert('Không thể đổi giờ', error.message);
+    }
+
+    if (!data?.ok) {
+      setReschedModal(null);
+      await load();
+      return Alert.alert('Không thể đổi giờ', data?.message || 'Buổi học vừa thay đổi.');
+    }
+
+    if (course?.tutor?.id) {
+      await createNotification({
+        userId: course.tutor.id,
+        title: 'Học sinh đổi giờ buổi học',
+        body: `Buổi ${reschedModal.session_number} môn ${course.subject} chuyển sang ${formatSlotPreview(newSlot)}.`,
+        type: 'session',
+        refId: reschedModal.id,
+      });
+    }
+
+    setReschedModal(null);
+    Alert.alert('Đã đổi giờ', `Buổi học chuyển sang: ${formatSlotPreview(newSlot)}`);
+    await load();
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -459,44 +681,96 @@ export default function CourseDetailScreen({ courseId, onBack }) {
                         {scfg.label}
                       </Text>
                     </View>
+                    {s.scheduled_start && (
+                      <Text style={styles.sessionTimeText}>
+                        {new Date(s.scheduled_start).toLocaleString('vi-VN', {
+                          weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </Text>
+                    )}
                   </View>
                 </View>
 
                 {s.status === 'pending' && course.status === 'active' && (() => {
                   const timeState = getSessionTimeState(s);
+                  const joinWin = getJoinWindow(s);
 
                   return (
-                    <View style={styles.sessionActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.sessionBtn,
-                          { backgroundColor: '#FEF2F2' },
-                          !timeState.canDispute && { opacity: 0.4 },
-                        ]}
-                        onPress={() => handleDispute(s)}
-                      >
-                        <Ionicons
-                          name={timeState.canDispute ? 'alert-circle-outline' : 'lock-closed-outline'}
-                          size={14}
-                          color="#EF4444"
-                        />
-                      </TouchableOpacity>
+                    <View style={styles.sessionActionCol}>
+                      <View style={styles.sessionActions}>
+                        <TouchableOpacity
+                          style={[
+                            styles.sessionBtn,
+                            { backgroundColor: '#2563EB' },
+                            !joinWin.open && { opacity: 0.4 },
+                          ]}
+                          disabled={!joinWin.open}
+                          onPress={() => onJoinClass({ ...s, course })}
+                        >
+                          <Ionicons name="videocam" size={14} color="#fff" />
+                          <Text style={styles.sessionBtnText}>
+                            {joinWin.open ? 'Vào lớp' : 'Chưa mở'}
+                          </Text>
+                        </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={[
-                          styles.sessionBtn,
-                          { backgroundColor: '#10B981' },
-                          !timeState.canConfirm && { opacity: 0.4 },
-                        ]}
-                        onPress={() => handleConfirmSession(s)}
-                      >
-                        <Ionicons
-                          name={timeState.canConfirm ? 'checkmark' : 'lock-closed-outline'}
-                          size={14}
-                          color="#fff"
-                        />
-                        <Text style={styles.sessionBtnText}>Xác nhận</Text>
-                      </TouchableOpacity>
+                        {!timeState.canDispute && (
+                          <>
+                            <TouchableOpacity
+                              style={[styles.sessionBtn, { backgroundColor: '#FFFBEB' }]}
+                              onPress={() => handleResched(s)}
+                            >
+                              <Ionicons name="swap-horizontal" size={14} color="#F59E0B" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.sessionBtn, { backgroundColor: '#FEF2F2' }]}
+                              onPress={() => handleCancelSession(s)}
+                              disabled={cancelSubmitting}
+                            >
+                              {cancelSubmitting ? (
+                                <ActivityIndicator size="small" color="#EF4444" />
+                              ) : (
+                                <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                              )}
+                            </TouchableOpacity>
+                          </>
+                        )}
+
+                        <TouchableOpacity
+                          style={[
+                            styles.sessionBtn,
+                            { backgroundColor: '#FEF2F2' },
+                            !timeState.canDispute && { opacity: 0.4 },
+                          ]}
+                          onPress={() => handleDispute(s)}
+                        >
+                          <Ionicons
+                            name={timeState.canDispute ? 'alert-circle-outline' : 'lock-closed-outline'}
+                            size={14}
+                            color="#EF4444"
+                          />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.sessionBtn,
+                            { backgroundColor: '#10B981' },
+                            !timeState.canConfirm && { opacity: 0.4 },
+                          ]}
+                          onPress={() => handleConfirmSession(s)}
+                        >
+                          <Ionicons
+                            name={timeState.canConfirm ? 'checkmark' : 'lock-closed-outline'}
+                            size={14}
+                            color="#fff"
+                          />
+                          <Text style={styles.sessionBtnText}>Xác nhận</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {!joinWin.open && !!joinWin.hint && (
+                        <Text style={styles.joinHint}>{joinWin.hint}</Text>
+                      )}
                     </View>
                   );
                 })()}
@@ -667,6 +941,78 @@ export default function CourseDetailScreen({ courseId, onBack }) {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={!!reschedModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!reschedSubmitting) setReschedModal(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.reschedBox}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  Đổi giờ buổi {reschedModal?.session_number}
+                </Text>
+                <Text style={styles.modalSub}>
+                  Buổi hiện tại: {reschedModal?.scheduled_start
+                    ? formatSlotPreview({ start_at: reschedModal.scheduled_start })
+                    : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                disabled={reschedSubmitting}
+                onPress={() => setReschedModal(null)}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.reschedHint}>
+              Chọn khung giờ trống khác cùng thứ với buổi đang đổi (theo lịch rảnh của gia sư). Các buổi còn lại được giữ nguyên.
+            </Text>
+
+            {reschedLoading ? (
+              <View style={styles.reschedLoading}>
+                <ActivityIndicator size="large" color="#2563EB" />
+                <Text style={styles.reschedLoadingText}>Đang tải khung giờ trống...</Text>
+              </View>
+            ) : reschedSlots.length === 0 ? (
+              <View style={styles.reschedEmpty}>
+                <Ionicons name="calendar-outline" size={36} color="#D1D5DB" />
+                <Text style={styles.reschedEmptyText}>
+                  {reschedError || 'Không còn khung giờ trống nào cùng thứ này trong 90 ngày tới.'}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.reschedList}
+                showsVerticalScrollIndicator={false}
+              >
+                {reschedSlots.slice(0, 40).map(slot => (
+                  <TouchableOpacity
+                    key={slotKey(slot)}
+                    style={styles.reschedOption}
+                    disabled={reschedSubmitting}
+                    onPress={() => applyResched(slot)}
+                  >
+                    <Ionicons name="time-outline" size={16} color="#2563EB" />
+                    <Text style={styles.reschedOptionText}>
+                      {formatSlotPreview(slot)}
+                    </Text>
+                    {reschedSubmitting && (
+                      <ActivityIndicator size="small" color="#2563EB" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -748,12 +1094,41 @@ const styles = StyleSheet.create({
   sessionTitle: { fontSize: 14, fontWeight: '600', color: '#111' },
   sessionMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   sessionMetaText: { fontSize: 12, fontWeight: '500' },
-  sessionActions: { flexDirection: 'row', gap: 6 },
+  sessionTimeText: { fontSize: 11, color: '#6B7280', marginTop: 3 },
+  sessionActionCol: { alignItems: 'flex-end', gap: 4 },
+  sessionActions: {
+    flexDirection: 'row', gap: 6, flexWrap: 'wrap',
+    justifyContent: 'flex-end', maxWidth: 210,
+  },
   sessionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
   },
   sessionBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  joinHint: { fontSize: 11, color: '#F59E0B', textAlign: 'right', maxWidth: 210 },
+  reschedBox: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 32, maxHeight: '75%',
+  },
+  reschedHint: {
+    fontSize: 13, color: '#475569', lineHeight: 19,
+    backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12,
+    marginTop: 10, marginBottom: 6,
+  },
+  reschedLoading: { alignItems: 'center', paddingVertical: 32 },
+  reschedLoadingText: { fontSize: 13, color: '#6B7280', marginTop: 10 },
+  reschedEmpty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 },
+  reschedEmptyText: {
+    fontSize: 13, color: '#9CA3AF', textAlign: 'center',
+    marginTop: 10, lineHeight: 19,
+  },
+  reschedList: { flexGrow: 0, marginTop: 4 },
+  reschedOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 13, paddingHorizontal: 12,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  reschedOptionText: { fontSize: 14, color: '#111827', fontWeight: '500', flex: 1 },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',

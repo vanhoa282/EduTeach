@@ -21,7 +21,7 @@ const FILTERS = [
   { key: 'done', label: 'Đã dạy' },
 ];
 
-export default function ScheduleScreen({ user }) {
+export default function ScheduleScreen({ user, onJoinClass }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,7 +34,7 @@ export default function ScheduleScreen({ user }) {
       .select(`
         *,
         course:courses (
-          id, subject, total_sessions, student_id,
+          id, subject, total_sessions, student_id, tutor_id,
           student:users!courses_student_id_fkey (full_name, phone)
         )
       `)
@@ -168,13 +168,30 @@ export default function ScheduleScreen({ user }) {
             const cfg = STATUS_CFG[s.status] || STATUS_CFG.pending;
             const studentName = s.course?.student?.full_name || 'Học sinh';
             const subject = s.course?.subject || 'Môn';
-            const dt = s.scheduled_at ? new Date(s.scheduled_at) : null;
+            const dt = s.scheduled_start
+              ? new Date(s.scheduled_start)
+              : s.scheduled_at
+                ? new Date(s.scheduled_at)
+                : null;
             const timeStr = dt
               ? `${dt.getHours().toString().padStart(2, '0')}:00 - ${(dt.getHours() + 2).toString().padStart(2, '0')}:00`
               : '---';
             const dateStr = dt
               ? dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
               : '---';
+
+            // Vào lớp: mở 15 phút trước giờ dạy, đóng 30 phút sau khi kết thúc.
+            const startMs = dt ? dt.getTime() : null;
+            const endMs = startMs != null ? startMs + 2 * 3600000 : null;
+            const nowMs = Date.now();
+            const joinOpen = startMs != null &&
+              nowMs >= startMs - 15 * 60000 &&
+              nowMs <= endMs + 30 * 60000;
+            const joinHint = !joinOpen && startMs != null
+              ? (nowMs < startMs - 15 * 60000
+                ? 'Mở trước giờ dạy 15 phút'
+                : 'Buổi học đã kết thúc')
+              : '';
 
             return (
               <View key={s.id} style={styles.sessionCard}>
@@ -191,8 +208,28 @@ export default function ScheduleScreen({ user }) {
                     <Text style={styles.sessionMetaText}>{dateStr}</Text>
                   </View>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-                  <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+                
+                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                  <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+                    <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </View>
+                  {s.status === 'pending' && (
+                    <>
+                      <TouchableOpacity 
+                        style={[styles.joinBtn, !joinOpen && styles.joinBtnDisabled]}
+                        disabled={!joinOpen}
+                        onPress={() => onJoinClass(s)}
+                      >
+                        <Ionicons name="videocam" size={12} color="#fff" />
+                        <Text style={styles.joinBtnText}>
+                          {joinOpen ? 'Vào lớp' : 'Chưa mở'}
+                        </Text>
+                      </TouchableOpacity>
+                      {!!joinHint && (
+                        <Text style={styles.joinHint}>{joinHint}</Text>
+                      )}
+                    </>
+                  )}
                 </View>
               </View>
             );
@@ -252,4 +289,12 @@ const styles = StyleSheet.create({
   sessionDot: { color: '#D1D5DB' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   statusText: { fontSize: 11, fontWeight: '700' },
+  joinBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#2563EB', paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8,
+  },
+  joinBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  joinBtnDisabled: { opacity: 0.4 },
+  joinHint: { fontSize: 10, color: '#F59E0B', marginTop: 4, textAlign: 'right', maxWidth: 110 },
 });

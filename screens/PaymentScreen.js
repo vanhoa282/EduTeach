@@ -10,13 +10,9 @@ import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
 import { getPaymentBank, checkPaymentNow } from '../lib/paymentGateway';
 import { pickImage, uploadImage } from '../lib/upload';
+import { createBooking } from '../lib/booking/createBooking';
 
 const BANK_LABELS = {ACB:'ACB - Á Châu', MB:'MB Bank', VCB:'Vietcombank', BIDV:'BIDV'};
-function newOrderCode() {
-  const bytes = Crypto.getRandomBytes(4);
-  const n = (((bytes[0]*256 + bytes[1])*256 + bytes[2])*256 + bytes[3]) >>> 0;
-  return 'EDT' + String(100000 + n % 900000);
-}
 function fmt(n) {return Number(n || 0).toLocaleString('vi-VN') + 'đ';}
 
 export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
@@ -40,10 +36,14 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
 
     let safe = raw;
 
-    if (raw.includes('LIMIT_2_PENDING_INVOICES')) {
+    if (raw.includes('LIMIT_2_PENDING_INVOICES') || /TOO_MANY_PENDING|2 hóa đơn|2 đơn/i.test(raw)) {
       safe = 'Bạn đang có 2 hóa đơn chờ thanh toán. Vui lòng vào Quản Lý Hóa Đơn để xử lý trước khi tạo mới.';
     } else if (raw.includes('INVOICE_NOT_PAYABLE')) {
       safe = 'Hóa đơn đã hết hạn hoặc không còn hiệu lực. Vui lòng tạo hóa đơn mới.';
+    } else if (/SLOT_ALREADY_BOOKED|LEGACY_SESSION_CONFLICT|giữ lịch|trùng lịch|lịch trống/i.test(raw)) {
+      safe = 'Khung giờ vừa bị người khác giữ hoặc đã có buổi học. Quay lại chọn lịch mới.';
+    } else if (/Phiên đăng nhập|đăng nhập lại/i.test(raw)) {
+      safe = 'Phiên đăng nhập chưa sẵn sàng cho đặt lịch. Vui lòng đăng xuất rồi đăng nhập lại.';
     } else if (
       /Supabase|API5S|RPC|SQL|403|500|PGRST|permission denied|duplicate key|violates|date_only_no_time|network request failed/i.test(raw)
     ) {
@@ -106,21 +106,20 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
   const copy = async text=>{await Clipboard.setStringAsync(String(text));showNotice('Đã sao chép',String(text));};
   const createOrder = async()=>{
     if(!bank?.ready || !user?.id || !tutor?.id || creating)return;
+    if(!Array.isArray(booking?.slots) || ![10,20,30].includes(booking.slots.length)){
+      showNotice('Thiếu lịch học','Quay lại màn hình đăng ký để hệ thống xếp lịch trống trước khi tạo đơn.');
+      return;
+    }
     setCreating(true);
-    let courseId=null;
     try {
-      const {data:feeConfig,error:feeErr}=await supabase.from('settings').select('value').eq('key','commission_rate').maybeSingle();
-      if(feeErr)throw feeErr;
-      const rate=Number(feeConfig?.value??10);
-      if(!Number.isFinite(rate)||rate<0||rate>50)throw new Error('Cấu hình hoa hồng không hợp lệ');
-      const {data:course,error:courseErr}=await supabase.from('courses').insert({
-        student_id:user.id,tutor_id:tutor.id,subject:tutor.subject,
-        total_sessions:booking.sessions,price_per_session:tutor.price,total_price:booking.total,
-        payment_type:booking.paymentType,paid_amount:0,commission_rate:rate,
-        status:'pending_payment',schedule:booking.schedule,
-      }).select('id').single();
-      if(courseErr)throw courseErr;
-      courseId=course.id;
+      // Atomic: course + order + booking_slot_locks (tránh đụng lịch phía server).
+      const created = await createBooking({
+        tutorId: tutor.id,
+        subject: tutor.subject || 'Gia sư',
+        slots: booking.slots,
+        paymentType: booking.paymentType,
+      });
+
       const secretBytes = Crypto.getRandomBytes(32);
       const secret = Array.from(secretBytes)
         .map(b => b.toString(16).padStart(2, '0'))
@@ -131,21 +130,32 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
         secret
       );
 
-      const code=newOrderCode();
-      const expires=new Date(Date.now()+30*60*1000).toISOString();
-      const {data:newOrder,error:orderErr}=await supabase.from('orders').insert({
-        order_code:code,student_id:user.id,course_id:courseId,amount:booking.payNow,
-        status:'pending',expires_at:expires,cancel_secret_hash:secretHash,
-      }).select('id,order_code,course_id,amount,expires_at').single();
-      if(orderErr)throw orderErr;
-      await AsyncStorage.setItem(
-        '@eduteach_invoice_secret_' + newOrder.id,
-        secret
-      );
-      setOrder(newOrder);
+      // Gắn mã hủy hóa đơn (không ảnh hưởng khóa lịch).
+      const { error: secretErr } = await supabase
+        .from('orders')
+        .update({ cancel_secret_hash: secretHash })
+        .eq('id', created.id)
+        .eq('student_id', user.id)
+        .eq('status', 'pending');
+      if (secretErr) {
+        // Đơn đã tạo + giữ lịch thành công; vẫn cho thanh toán.
+        console.log('cancel secret update skipped');
+      } else {
+        await AsyncStorage.setItem(
+          '@eduteach_invoice_secret_' + created.id,
+          secret
+        );
+      }
+
+      setOrder({
+        id: created.id,
+        order_code: created.order_code,
+        course_id: created.course_id,
+        amount: created.amount,
+        expires_at: created.expires_at,
+      });
     } catch(e) {
       showNotice('Chưa tạo được đơn',e?.message||'Lỗi hệ thống. Không chuyển tiền khi chưa có mã đơn.');
-      // Orphan pending courses (if any) must be cleaned through controlled admin maintenance.
     } finally {setCreating(false);}
   };
   // Only a verified bank transaction can activate a course.
@@ -213,8 +223,10 @@ export default function PaymentScreen({user,tutor,booking,onBack,onSuccess}) {
     <View style={s.top}><TouchableOpacity onPress={onBack}><Ionicons name="arrow-back" color="#0F172A" size={24}/></TouchableOpacity>
       <Text style={s.title}>Thanh toán khóa học</Text><View style={{width:24}}/></View>
     <ScrollView contentContainerStyle={s.content}>
-      <View style={s.priceBox}><Text style={s.priceTitle}>Số tiền cần thanh toán</Text><Text style={s.price}>{fmt(booking.payNow)}</Text>
-        <Text style={s.light}>{booking.sessions} buổi · {tutor.name}</Text></View>
+      <View style={s.priceBox}><Text style={s.priceTitle}>Số tiền cần thanh toán</Text><Text style={s.price}>{fmt(order?.amount ?? booking.payNow)}</Text>
+        <Text style={s.light}>{booking.sessions} buổi · {tutor.name}</Text>
+        {!!booking.schedule && <Text style={s.light}>{booking.schedule}</Text>}
+      </View>
       {!order ? <View style={s.card}>
         <Text style={s.section}>Chuẩn bị thanh toán</Text>
         <Text style={s.tip}>Hãy tạo mã đơn trước, sau đó mới chuyển khoản. Nhập đúng mã đơn để hệ thống đối soát.</Text>

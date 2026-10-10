@@ -9,6 +9,7 @@ import AuthScreen from './screens/AuthScreen';
 import ModernSplash from './components/ModernSplash';
 import MainTabs from './screens/MainTabs';
 import TutorMainTabs from './screens/TutorMainTabs';
+import { logout as clearAuthSession } from './lib/auth';
 
 const USER_KEY = '@eduteach_user';
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -108,7 +109,10 @@ function AppInner() {
   const handleLogout = async () => {
     setUser(null);
     setScreen('auth');
-    try { await AsyncStorage.removeItem(USER_KEY); } catch (e) {}
+    try {
+      await clearAuthSession();
+      await AsyncStorage.removeItem(USER_KEY);
+    } catch (e) {}
   };
 
   if (screen === 'splash') {

@@ -51,6 +51,10 @@ yarn-error.*
 .env
 .env.*
 !.env.example
+
+# KHONG bao gio dua len git
+backups/
+.cursor/
 *.backup-*
 *.before-invoices-*
 *.bak

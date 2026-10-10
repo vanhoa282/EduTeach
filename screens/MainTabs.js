@@ -11,6 +11,7 @@ import TutorDetailScreen from './TutorDetailScreen';
 import BookingScreen from './BookingScreen';
 import PaymentScreen from './PaymentScreen';
 import CourseDetailScreen from './CourseDetailScreen';
+import ClassroomScreen from './ClassroomScreen';
 import ChatListScreen from './chat/ChatListScreen';
 import ChatDetailScreen from './chat/ChatDetailScreen';
 import MyTutorsScreen from './MyTutorsScreen';
@@ -33,6 +34,7 @@ export default function MainTabs({ user: initialUser, onLogout }) {
   const [selectedTutor, setSelectedTutor] = useState(null);
   const [bookingTutor, setBookingTutor] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
+  const [activeSession, setActiveSession] = useState(null);
   const [selectedCourseId, setSelectedCourseId] = useState(null);
   const [selectedNotif, setSelectedNotif] = useState(null);
   const [allTutorsFilter, setAllTutorsFilter] = useState(null);
@@ -101,7 +103,10 @@ export default function MainTabs({ user: initialUser, onLogout }) {
     return <AllTutorsScreen user={user} initialCategory={allTutorsFilter.category} initialSearch={allTutorsFilter.search} onBack={() => setAllTutorsFilter(null)} onSelectTutor={(t) => { setAllTutorsFilter(null); setSelectedTutor(t); }} />;
   }
   if (selectedCourseId) {
-    return <CourseDetailScreen courseId={selectedCourseId} onBack={() => { setSelectedCourseId(null); setRefreshKey(k => k + 1); }} />;
+    return <CourseDetailScreen courseId={selectedCourseId} onBack={() => { setSelectedCourseId(null); setRefreshKey(k => k + 1); }} onJoinClass={(session) => setActiveSession(session)} />;
+  }
+  if (activeSession) {
+    return <ClassroomScreen user={user} session={activeSession} onBack={() => setActiveSession(null)} />;
   }
   if (paymentInfo) {
     return <PaymentScreen user={user} tutor={paymentInfo.tutor} booking={paymentInfo.booking} onBack={() => setPaymentInfo(null)} onSuccess={() => { setPaymentInfo(null); setBookingTutor(null); setSelectedTutor(null); setActiveTab('courses'); setRefreshKey(k => k + 1); }} />;

@@ -21,6 +21,7 @@ import ChangePasswordScreen from './profile/ChangePasswordScreen';
 import BankScreen from './profile/BankScreen';
 import SupportScreen from './profile/SupportScreen';
 import TermsScreen from './profile/TermsScreen';
+import ClassroomScreen from './ClassroomScreen';
 import AIFloatingButton from '../components/AIFloatingButton';
 import AIChatBox from '../components/AIChatBox';
 import { getWallet } from '../lib/wallet';
@@ -41,6 +42,7 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [reviewStudent, setReviewStudent] = useState(null);
   const [subScreen, setSubScreen] = useState(null);
+  const [activeSession, setActiveSession] = useState(null);
   const [showAI, setShowAI] = useState(false);
   const appState = useRef(AppState.currentState);
 
@@ -96,6 +98,7 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
 
   if (reviewStudent) return <ReviewStudentScreen user={user} student={reviewStudent} onBack={() => setReviewStudent(null)} />;
   if (activeConv) return <ChatDetailScreen user={user} conversation={activeConv} onBack={() => { setActiveConv(null); loadCounts(); }} />;
+  if (activeSession) return <ClassroomScreen user={user} session={activeSession} onBack={() => setActiveSession(null)} />;
 
   if (selectedStudent) {
     return <StudentDetailScreen user={user} student={selectedStudent} onBack={() => setSelectedStudent(null)} onReview={(s) => setReviewStudent(s)} onOpenChat={async (s) => {
@@ -118,7 +121,7 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {activeTab === 'schedule' && <ScheduleScreen user={user} />}
+        {activeTab === 'schedule' && <ScheduleScreen user={user} onJoinClass={(session) => setActiveSession(session)} />}
         {activeTab === 'students' && <StudentsScreen user={user} onOpenChat={setActiveConv} onOpenStudent={setSelectedStudent} />}
         {activeTab === 'messages' && <ChatListScreen user={user} onOpenChat={setActiveConv} />}
         {activeTab === 'notifications' && <NotificationsScreen user={user} onRefresh={loadCounts} onOpenNotif={setSelectedNotif} />}

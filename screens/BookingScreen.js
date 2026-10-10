@@ -1,7 +1,20 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getMySlots } from '../lib/tutorSchedule';
+import { listFreeSlots, validateSelectedSlots } from '../lib/booking/availability';
+import {
+  summarizeScheduleLabel,
+  formatSlotPreview,
+  groupSlotsByDay,
+  sameWeekdaySlots,
+  slotKey,
+  vnPartsFromIso,
+  overlaps,
+} from '../lib/booking/schedule';
+import { AUTH_SESSION_KEY } from '../lib/auth/serverLogin';
 
 const SESSION_OPTIONS = [
   { sessions: 10, label: '10 buổi', discount: 0 },
@@ -9,17 +22,17 @@ const SESSION_OPTIONS = [
   { sessions: 30, label: '30 buổi', discount: 10 },
 ];
 
-const TIME_SLOTS = [
-  { id: '1', label: 'T2, T4, T6', sub: '18h - 20h' },
-  { id: '2', label: 'T3, T5, T7', sub: '18h - 20h' },
-  { id: '3', label: 'T7, CN', sub: '8h - 10h' },
-  { id: '4', label: 'T7, CN', sub: '14h - 16h' },
-];
-
 export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
   const [sessions, setSessions] = useState(10);
-  const [timeSlot, setTimeSlot] = useState('1');
   const [paymentType, setPaymentType] = useState('full');
+  const [tutorSlots, setTutorSlots] = useState(null);
+  const [freeSlots, setFreeSlots] = useState([]);
+  const [selectedSlots, setSelectedSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(true);
+  const [loadingFree, setLoadingFree] = useState(false);
+  const [planError, setPlanError] = useState('');
+  const [sessionReady, setSessionReady] = useState(true);
+  const [changeSlot, setChangeSlot] = useState(null);
 
   const option = SESSION_OPTIONS.find(o => o.sessions === sessions);
   const baseTotal = tutor.price * sessions;
@@ -28,25 +41,186 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
   const payNow = paymentType === 'full' ? total : Math.round(total / 2);
   const payLater = paymentType === 'half' ? total - payNow : 0;
 
-  const handleConfirm = () => {
-    const slot = TIME_SLOTS.find(s => s.id === timeSlot);
-    const booking = {
-      sessions,
-      total,
-      payNow,
-      payLater,
-      paymentType,
-      schedule: `${slot.label} · ${slot.sub}`,
-    };
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoadingSlots(true);
+      try {
+        const token = await AsyncStorage.getItem(AUTH_SESSION_KEY);
+        if (mounted) {
+          setSessionReady(!!token && /^[a-f0-9]{64}$/.test(token));
+        }
+        const data = await getMySlots(tutor.id);
+        if (!mounted) return;
+        setTutorSlots(data || {});
+      } catch (_) {
+        if (!mounted) return;
+        setTutorSlots({});
+        setPlanError('Không tải được lịch rảnh của gia sư.');
+      } finally {
+        if (mounted) setLoadingSlots(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [tutor.id]);
+
+  useEffect(() => {
+    if (!tutorSlots) return;
+
+    let mounted = true;
+    (async () => {
+      setLoadingFree(true);
+      setPlanError('');
+      setFreeSlots([]);
+      setSelectedSlots([]);
+
+      const hasHours = Object.values(tutorSlots).some(
+        hours => Array.isArray(hours) && hours.length > 0
+      );
+      if (!hasHours) {
+        if (mounted) {
+          setPlanError('Gia sư chưa mở lịch rảnh. Vui lòng chọn gia sư khác hoặc quay lại sau.');
+          setLoadingFree(false);
+        }
+        return;
+      }
+
+      try {
+        const slots = await listFreeSlots(
+          tutor.id,
+          tutorSlots,
+          new Date()
+        );
+        if (!mounted) return;
+        setFreeSlots(slots);
+      } catch (e) {
+        if (!mounted) return;
+        setPlanError(e?.message || 'Không tải được danh sách khung giờ trống.');
+      } finally {
+        if (mounted) setLoadingFree(false);
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [tutor.id, tutorSlots]);
+
+  const toggleSlot = (slot) => {
+    const key = `${slot.start_at}`;
+    const exists = selectedSlots.some(s => s.start_at === key);
+    if (exists) {
+      setSelectedSlots(selectedSlots.filter(s => s.start_at !== key));
+    } else {
+      if (selectedSlots.length >= sessions) {
+        Alert.alert('Đã đủ số buổi', `Bạn đã chọn đủ ${sessions} buổi. Bỏ chọn buổi khác nếu muốn đổi.`);
+        return;
+      }
+      if (selectedSlots.some(s => overlaps(slot, s))) {
+        Alert.alert(
+          'Trùng giờ với buổi đã chọn',
+          'Khung giờ này chồng với một buổi khác trong lịch của bạn. Bấm "Thay đổi" ở buổi đó nếu muốn đổi giờ.'
+        );
+        return;
+      }
+      setSelectedSlots([...selectedSlots, slot].sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at)));
+    }
+  };
+
+  const handleChangeSlot = (slot) => {
+    if (loadingFree) return;
+    setChangeSlot(slot);
+  };
+
+  const applyChangeSlot = (newSlot) => {
+    if (!changeSlot) return;
+
+    const others = selectedSlots.filter(
+      s => slotKey(s) !== slotKey(changeSlot)
+    );
+    const next = [...others, newSlot].sort(
+      (a, b) => Date.parse(a.start_at) - Date.parse(b.start_at)
+    );
+
+    try {
+      validateSelectedSlots(next, freeSlots, sessions);
+    } catch (e) {
+      Alert.alert('Không thể đổi buổi', e.message);
+      return;
+    }
+
+    setSelectedSlots(next);
+    setChangeSlot(null);
     Alert.alert(
-      'Xác nhận đăng ký',
-      `Bạn đăng ký ${sessions} buổi với ${tutor.name}\nThanh toán: ${payNow.toLocaleString('vi-VN')}đ${paymentType === 'half' ? `\nCòn lại: ${payLater.toLocaleString('vi-VN')}đ` : ''}`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        { text: 'Xác nhận', onPress: () => onSuccess(booking) },
-      ]
+      'Đã đổi buổi',
+      `Buổi học chuyển sang: ${formatSlotPreview(newSlot)}`
     );
   };
+
+  const handleConfirm = () => {
+    if (!user?.id) {
+      return Alert.alert('Lỗi', 'Bạn chưa đăng nhập');
+    }
+    if (!sessionReady) {
+      return Alert.alert(
+        'Cần đăng nhập lại',
+        'Phiên đặt lịch chưa sẵn sàng. Đăng xuất rồi đăng nhập lại (cần Edge Function auth-login).'
+      );
+    }
+    
+    try {
+      const validated = validateSelectedSlots(selectedSlots, freeSlots, sessions);
+      const schedule = summarizeScheduleLabel(validated);
+      const booking = {
+        sessions,
+        total,
+        payNow,
+        payLater,
+        paymentType,
+        schedule,
+        slots: validated,
+      };
+
+      Alert.alert(
+        'Xác nhận đăng ký',
+        `Bạn đăng ký ${sessions} buổi với ${tutor.name}\nLịch: ${schedule}\nThanh toán: ${payNow.toLocaleString('vi-VN')}đ${paymentType === 'half' ? `\nCòn lại: ${payLater.toLocaleString('vi-VN')}đ` : ''}\n\nHệ thống sẽ giữ chỗ 30 phút khi tạo mã đơn.`,
+        [
+          { text: 'Huỷ', style: 'cancel' },
+          { text: 'Xác nhận', onPress: () => onSuccess(booking) },
+        ]
+      );
+    } catch (e) {
+      Alert.alert('Lỗi', e.message);
+    }
+  };
+
+  const canConfirm = sessionReady && !loadingSlots && !loadingFree && selectedSlots.length === sessions;
+
+  // Nút "Thay đổi": slot trống khác cùng thứ (VN) của gia sư
+  const changeIndex = changeSlot
+    ? selectedSlots.findIndex(s => slotKey(s) === slotKey(changeSlot))
+    : -1;
+  const changeWeekday = changeSlot
+    ? (vnPartsFromIso(changeSlot.start_at)?.weekday ?? null)
+    : null;
+  const changeOptions = changeSlot && changeWeekday !== null
+    ? sameWeekdaySlots(
+        freeSlots,
+        changeWeekday,
+        selectedSlots.map(slotKey),
+        selectedSlots.filter(s => slotKey(s) !== slotKey(changeSlot))
+      )
+    : [];
+
+  // Lưới slot gom theo ngày (tối đa 50 khung giờ)
+  const gridGroups = [];
+  {
+    let shownCount = 0;
+    for (const group of groupSlotsByDay(freeSlots)) {
+      if (shownCount >= 50) break;
+      const take = Math.min(group.slots.length, 50 - shownCount);
+      shownCount += take;
+      gridGroups.push({ ...group, slots: group.slots.slice(0, take) });
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -81,7 +255,14 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
               <TouchableOpacity
                 key={opt.sessions}
                 style={[styles.sessionCard, active && styles.sessionCardActive]}
-                onPress={() => setSessions(opt.sessions)}
+                onPress={() => {
+                  setSessions(opt.sessions);
+                  // Reset selected slots if count changes? 
+                  // For better UX, we could keep them and let the user add/remove
+                  if (selectedSlots.length > opt.sessions) {
+                    setSelectedSlots(selectedSlots.slice(0, opt.sessions));
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.sessionNum, active && styles.sessionNumActive]}>
@@ -100,32 +281,86 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
           })}
         </View>
 
-        <Text style={styles.sectionTitle}>Chọn lịch học</Text>
-        <View style={styles.slotGrid}>
-          {TIME_SLOTS.map(slot => {
-            const active = slot.id === timeSlot;
-            return (
-              <TouchableOpacity
-                key={slot.id}
-                style={[styles.slotCard, active && styles.slotCardActive]}
-                onPress={() => setTimeSlot(slot.id)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="calendar-outline"
-                  size={18}
-                  color={active ? '#2563EB' : '#9CA3AF'}
-                />
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={[styles.slotLabel, active && styles.slotLabelActive]}>
-                    {slot.label}
-                  </Text>
-                  <Text style={styles.slotSub}>{slot.sub}</Text>
+        {!sessionReady && (
+          <View style={styles.warnCard}>
+            <Ionicons name="warning-outline" size={18} color="#B45309" />
+            <Text style={styles.warnText}>
+              Phiên đặt lịch chưa kích hoạt. Đăng xuất → đăng nhập lại trước khi tạo đơn (cần auth-login).
+            </Text>
+          </View>
+        )}
+
+        <Text style={styles.sectionTitle}>Chọn lịch học ({selectedSlots.length}/{sessions})</Text>
+        <View style={styles.planCard}>
+          <View style={styles.planHeader}>
+            <Ionicons name="calendar-outline" size={18} color="#2563EB" />
+            <Text style={styles.planHeaderText}>Chọn khung giờ trống · mỗi buổi 2 giờ</Text>
+          </View>
+
+          {loadingSlots || loadingFree ? (
+            <View style={styles.planLoading}>
+              <ActivityIndicator color="#2563EB" />
+              <Text style={styles.planHint}>Đang tải danh sách giờ trống...</Text>
+            </View>
+          ) : planError ? (
+            <Text style={styles.planError}>{planError}</Text>
+          ) : freeSlots.length === 0 ? (
+            <Text style={styles.planError}>Gia sư không còn lịch trống nào trong 90 ngày tới.</Text>
+          ) : (
+            <View>
+              {gridGroups.map(group => (
+                <View key={group.key} style={styles.dayGroup}>
+                  <View style={styles.dayHeader}>
+                    <Ionicons name="calendar-outline" size={13} color="#64748B" />
+                    <Text style={styles.dayLabel}>{group.label}</Text>
+                  </View>
+                  <View style={styles.slotGrid}>
+                    {group.slots.map((slot, idx) => {
+                      const isSelected = selectedSlots.some(
+                        s => slotKey(s) === slotKey(slot)
+                      );
+                      return (
+                        <TouchableOpacity
+                          key={`${slot.start_at}-${idx}`}
+                          style={[styles.slotItem, isSelected && styles.slotItemActive]}
+                          onPress={() => toggleSlot(slot)}
+                        >
+                          <Text style={[styles.slotText, isSelected && styles.slotTextActive]}>
+                            {formatSlotPreview(slot)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
-              </TouchableOpacity>
-            );
-          })}
+              ))}
+              {freeSlots.length > 50 && (
+                <Text style={styles.planHint}>... còn {freeSlots.length - 50} khung giờ khác</Text>
+              )}
+            </View>
+          )}
         </View>
+
+        {selectedSlots.length > 0 && (
+          <View style={styles.previewCard}>
+            <Text style={styles.previewTitle}>Lịch đã chọn — bấm "Thay đổi" để đổi giờ buổi (không mất các buổi khác):</Text>
+            {selectedSlots.map((slot, idx) => (
+              <View key={slotKey(slot)} style={styles.previewRow}>
+                <View style={styles.previewLeft}>
+                  <Text style={styles.previewIndex}>Buổi {idx + 1}</Text>
+                  <Text style={styles.previewTime}>{formatSlotPreview(slot)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.changeBtn}
+                  onPress={() => handleChangeSlot(slot)}
+                >
+                  <Ionicons name="swap-horizontal" size={13} color="#2563EB" />
+                  <Text style={styles.changeBtnText}>Thay đổi</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
 
         <Text style={styles.sectionTitle}>Phương thức thanh toán</Text>
         <TouchableOpacity
@@ -201,11 +436,74 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
           <Text style={styles.priceLabel}>Thanh toán ngay</Text>
           <Text style={styles.priceBig}>{payNow.toLocaleString('vi-VN')}đ</Text>
         </View>
-        <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-          <Text style={styles.confirmText}>Xác nhận</Text>
+        <TouchableOpacity
+          style={[styles.confirmBtn, !canConfirm && styles.confirmBtnDisabled]}
+          onPress={handleConfirm}
+          disabled={!canConfirm}
+        >
+          <Text style={styles.confirmText}>{selectedSlots.length === sessions ? 'Xác nhận' : `Chọn thêm ${sessions - selectedSlots.length} buổi`}</Text>
           <Ionicons name="arrow-forward" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={!!changeSlot}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setChangeSlot(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  {changeIndex >= 0 ? `Đổi buổi ${changeIndex + 1}` : 'Đổi buổi'}
+                </Text>
+                <Text style={styles.modalSub}>
+                  Buổi hiện tại: {changeSlot ? formatSlotPreview(changeSlot) : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setChangeSlot(null)}
+                style={styles.modalClose}
+              >
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalHint}>
+              Chọn khung giờ trống khác cùng thứ với buổi đang đổi (theo lịch rảnh của gia sư). Các buổi còn lại được giữ nguyên.
+            </Text>
+
+            <ScrollView
+              style={styles.modalList}
+              showsVerticalScrollIndicator={false}
+            >
+              {changeOptions.length === 0 ? (
+                <View style={styles.modalEmpty}>
+                  <Ionicons name="calendar-outline" size={36} color="#D1D5DB" />
+                  <Text style={styles.modalEmptyText}>
+                    Không còn khung giờ trống nào cùng thứ này trong 90 ngày tới.
+                  </Text>
+                </View>
+              ) : (
+                changeOptions.slice(0, 40).map(slot => (
+                  <TouchableOpacity
+                    key={slotKey(slot)}
+                    style={styles.modalOption}
+                    onPress={() => applyChangeSlot(slot)}
+                  >
+                    <Ionicons name="time-outline" size={16} color="#2563EB" />
+                    <Text style={styles.modalOptionText}>
+                      {formatSlotPreview(slot)}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -255,16 +553,39 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   discountText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  slotGrid: { gap: 10, marginBottom: 24 },
-  slotCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
-    borderWidth: 2, borderColor: '#E5E7EB',
+  warnCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#FFFBEB', borderColor: '#FDE68A', borderWidth: 1,
+    borderRadius: 12, padding: 12, marginBottom: 16,
   },
-  slotCardActive: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
-  slotLabel: { fontSize: 14, fontWeight: '600', color: '#111' },
-  slotLabelActive: { color: '#2563EB' },
-  slotSub: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  warnText: { flex: 1, fontSize: 12, color: '#92400E', lineHeight: 18 },
+  planCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 24,
+    borderWidth: 1, borderColor: '#DBEAFE', gap: 8,
+  },
+  planHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  planHeaderText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#1D4ED8' },
+  planLoading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  planHint: { fontSize: 13, color: '#64748B' },
+  planError: { fontSize: 13, color: '#DC2626', lineHeight: 19 },
+  slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  slotItem: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
+    borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB',
+  },
+  slotItemActive: { borderColor: '#2563EB', backgroundColor: '#2563EB' },
+  slotText: { fontSize: 12, color: '#374151' },
+  slotTextActive: { color: '#fff', fontWeight: 'bold' },
+  previewCard: {
+    backgroundColor: '#F3F4F6', borderRadius: 12, padding: 16, marginBottom: 24,
+  },
+  previewTitle: { fontSize: 14, fontWeight: 'bold', color: '#374151', marginBottom: 8 },
+  previewRow: {
+    flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4,
+    borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+  },
+  previewIndex: { fontSize: 12, color: '#6B7280' },
+  previewTime: { fontSize: 13, color: '#111', fontWeight: '500' },
   payCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
     borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
@@ -308,5 +629,46 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB', paddingHorizontal: 22, paddingVertical: 14,
     borderRadius: 12,
   },
+  confirmBtnDisabled: { opacity: 0.45 },
   confirmText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  dayGroup: { marginBottom: 14 },
+  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  dayLabel: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  previewLeft: { flex: 1 },
+  changeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  changeBtnText: { fontSize: 12, fontWeight: '700', color: '#2563EB' },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(17,24,39,0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28,
+    maxHeight: '75%',
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'flex-start' },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#111' },
+  modalSub: { fontSize: 13, color: '#6B7280', marginTop: 3 },
+  modalClose: { padding: 4 },
+  modalHint: {
+    fontSize: 13, color: '#475569', lineHeight: 19,
+    backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, marginTop: 14,
+  },
+  modalList: { marginTop: 12, flexGrow: 0 },
+  modalEmpty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 },
+  modalEmptyText: {
+    fontSize: 13, color: '#9CA3AF', textAlign: 'center',
+    marginTop: 10, lineHeight: 19,
+  },
+  modalOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 13, paddingHorizontal: 12,
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  modalOptionText: { fontSize: 14, color: '#111827', fontWeight: '500' },
 });
+

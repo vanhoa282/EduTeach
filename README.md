@@ -206,22 +206,46 @@ Realtime bat: messages, conversations, notifications
 - AI tu choi cau hoi ve password/vi tien/SDT
 - Config luu DB (RLS block client)
 
+### Tranh dung lich (secure booking)
+- BookingScreen: xep lich tu available_slots, loc occupied (locks + sessions)
+- PaymentScreen: createBooking -> Edge booking-create (KHONG insert courses/orders tu client)
+- RPC eduteach_create_booking_atomic: advisory lock + overlap check + hold 30 phut
+- Thanh toan xong: sync_booking_locks tao sessions dung gio da giu
+- SQL dan Supabase: supabase/sql/02_booking_conflict_ready.sql
+- Edge can deploy: auth-login, auth-logout, auth-me, booking-availability, booking-create (JWT OFF)
+- Sau deploy: HS dang xuat -> dang nhap lai de co x-eduteach-session
+- Lưới slot gom theo ngày: 2 khung giờ cùng thứ khác giờ đều chọn được
+- Nut "Thay đổi" từng buổi đã chọn: đổi slot khác cùng thứ, không mất buổi khác
+- Khoá học đã đặt: Đổi giờ buổi (RPC eduteach_reschedule_session) + Huỷ buổi trước 24h (RPC eduteach_cancel_session)
+- SQL mới: supabase/sql/03_classroom_cancel_reschedule.sql (DÁN vào SQL Editor)
+
+## PHONG HOC ONLINE (JITSI)
+- screens/ClassroomScreen.js: Jitsi Meet qua WebView (react-native-webview) — KHONG mở app ngoài
+- Room: https://meet.jit.si/EduTeach_Session_<session_id> (UUID đầy đủ → không đoán được phòng)
+- Cấu hình: disableDeepLinking=true (chặn intent://), startWithAudioMuted/VideoMuted, prejoin off, tiếng Việt
+- Nút: Bật/Tắt mic, Bật/Tắt cam, Toàn màn hình, Rời phòng; loading/error state + nút thử lại
+- Chỉ HS + gia sư của buổi vào được (check tham gia ở app); giới hạn của meet.jit.si free: không có xác thực server-side — nếu cần bảo mật tuyệt đối thì dùng JaaS JWT (kế hoạch sau)
+- Vào lớp: mở 15 phút trước giờ học, đóng 30 phút sau khi kết thúc (cả HS lẫn gia sư)
+- Android cần quyền CAMERA + RECORD_AUDIO (đã thêm trong app.json)
+
 ## CON LAI
-### Uu tien cao
-- Push notification giong Zalo (pg_net trigger) - cho hoi ben dai hoc
-- OTP SDT hoan chinh (can tai khoan esms.vn)
-- Meet link trong session (nut "Vao hoc")
-- Huy buoi truoc 24h
+### Uu tien cao (truoc khi len Play/App Store)
+- Deploy + test secure booking end-to-end tren may that
+- Chay SQL 03 + test huỷ buổi / đổi giờ / vào phòng trên máy thật
+- Chuyen production sang Firebase Auth / FCM (README: demo dung Supabase)
+- Khoa RLS: chan client INSERT courses/orders sau khi cutover on dinh
+- OTP SDT (esms.vn) + eKYC CCCD gia su
+- Privacy Policy + Terms + in-app support thuc (TermsScreen đã có bản nội bộ)
+- Thong bao buoi sap toi (push) — expo-notifications + push-webhook đã có khung
 
 ### Trung binh
-- Doi icon + splash dep hon
-- Tu dong chuyen pending -> available sau 7 ngay
-- Thong bao buoi sap toi
-- Build APK production + xoa DB
+- Doi icon + splash store-ready (assets/icon.png + splash.png hiện là bản tạm)
+- Tu dong pending vi -> available sau 7 ngay
+- Build APK/AAB production (EAS production profile)
+- JaaS JWT cho phòng học nếu cần chặn người lạ tuyệt đối
 
 ### Thap
-- eKYC CCCD
-- Ho kinh doanh + tai khoan doanh nghiep ACB
+- Ho kinh doanh + TK doanh nghiep ACB
 - Hop dong dien tu
 - Dark mode
 
@@ -277,8 +301,8 @@ Realtime bat: messages, conversations, notifications
 - eSMS: https://esms.vn
 
 ## VERSION
-Last update: 2026-10-06
-Version: MVP 1.4 (AI tro ly hoan chinh + code block + table converter + latex)
+Last update: 2026-10-11
+Version: MVP 1.6 (Phòng học Jitsi + nút Thay đổi buổi + huỷ/đổi giờ trước 24h + SQL 03)
 
 ---
 
