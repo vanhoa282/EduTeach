@@ -1,33 +1,8 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { PRIVACY_POLICY, TERMS_OF_SERVICE, COMPANY } from '../../lib/legal';
 
-const SECTIONS = [
-  {
-    title: '1. Điều khoản sử dụng',
-    content: 'EduTeach là nền tảng kết nối học sinh với gia sư. Bằng việc sử dụng app, bạn đồng ý tuân thủ các quy định sau:\n\n• Không sử dụng để lừa đảo, quấy rối\n• Cung cấp thông tin chính xác\n• Tôn trọng gia sư và học sinh khác',
-  },
-  {
-    title: '2. Chính sách thanh toán',
-    content: 'Học sinh thanh toán trước 50% hoặc 100% học phí. Số tiền được giữ và giải ngân cho gia sư sau mỗi buổi học được xác nhận.\n\nHoa hồng nền tảng: 10% (có thể thay đổi, thông báo trước).',
-  },
-  {
-    title: '3. Chính sách hoàn tiền',
-    content: 'Khi có tranh chấp, admin xử lý như sau:\n\n• HS khiếu nại: Admin gọi xác minh\n• Hoàn tiền = 50% học phí - (số buổi đã dạy × giá buổi)\n• Thời gian xử lý: 3-7 ngày làm việc',
-  },
-  {
-    title: '4. Quyền và nghĩa vụ gia sư',
-    content: '• Dạy đúng giờ, đúng chất lượng\n• Không tự ý nghỉ buổi không báo\n• Nhận tiền sau khi HS xác nhận buổi\n• Tiền vào ví chờ 7 ngày trước khi rút được',
-  },
-  {
-    title: '5. Bảo mật thông tin',
-    content: 'EduTeach cam kết bảo mật thông tin cá nhân của người dùng. Chúng tôi không chia sẻ dữ liệu cho bên thứ 3 mà không có sự đồng ý.',
-  },
-  {
-    title: '6. Xử lý vi phạm',
-    content: 'Người dùng vi phạm có thể bị:\n\n• Cảnh cáo lần 1\n• Khoá tài khoản tạm thời\n• Khoá vĩnh viễn + báo cơ quan chức năng (nếu nghiêm trọng)',
-  },
-];
 
 export default function TermsScreen({ onBack }) {
   return (
@@ -46,15 +21,24 @@ export default function TermsScreen({ onBack }) {
             <Ionicons name="document-text" size={32} color="#6B7280" />
           </View>
           <Text style={styles.headerTitle}>Điều khoản & Chính sách</Text>
-          <Text style={styles.headerDate}>Cập nhật lần cuối: 05/10/2026</Text>
+          <Text style={styles.headerDate}>Cập nhật lần cuối: {COMPANY.updatedAt}</Text>
         </View>
 
         <Text style={styles.intro}>
           Chào mừng bạn đến với EduTeach. Vui lòng đọc kỹ các điều khoản dưới đây trước khi sử dụng dịch vụ.
         </Text>
 
-        {SECTIONS.map((s, i) => (
-          <View key={i} style={styles.section}>
+        <Text style={styles.blockTitle}>Chính sách quyền riêng tư</Text>
+        {PRIVACY_POLICY.map((s, i) => (
+          <View key={'pp-' + i} style={styles.section}>
+            <Text style={styles.sectionTitle}>{s.title}</Text>
+            <Text style={styles.sectionContent}>{s.content}</Text>
+          </View>
+        ))}
+
+        <Text style={styles.blockTitle}>Điều khoản sử dụng</Text>
+        {TERMS_OF_SERVICE.map((s, i) => (
+          <View key={'tos-' + i} style={styles.section}>
             <Text style={styles.sectionTitle}>{s.title}</Text>
             <Text style={styles.sectionContent}>{s.content}</Text>
           </View>
@@ -62,7 +46,7 @@ export default function TermsScreen({ onBack }) {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Mọi thắc mắc xin liên hệ support@eduteach.vn
+            {'Mọi thắc mắc xin liên hệ ' + COMPANY.email}
           </Text>
         </View>
 
@@ -100,6 +84,10 @@ const styles = StyleSheet.create({
   intro: {
     fontSize: 14, color: '#4B5563', lineHeight: 22,
     marginBottom: 20, paddingHorizontal: 4,
+  },
+  blockTitle: {
+    fontSize: 16, fontWeight: '800', color: '#2563EB',
+    marginBottom: 12, marginTop: 10, paddingHorizontal: 4,
   },
   section: {
     backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12,

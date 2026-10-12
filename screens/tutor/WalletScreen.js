@@ -65,6 +65,11 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
             </View>
           </View>
           <Text style={styles.balanceValue}>{(wallet.balance_available || 0).toLocaleString('vi-VN')}đ</Text>
+          {(wallet.balance_pending || 0) > 0 && (
+            <Text style={styles.balancePending}>
+              {'Đang chờ xử lý: ' + (wallet.balance_pending || 0).toLocaleString('vi-VN') + 'đ'}
+            </Text>
+          )}
 
           <View style={styles.balanceActions}>
             <TouchableOpacity
@@ -93,7 +98,7 @@ export default function WalletScreen({ user, onOpenWithdraw }) {
           <View style={{ flex: 1 }}>
             <Text style={styles.infoTitle}>Thu nhập vào ví ngay</Text>
             <Text style={styles.infoDesc}>
-              Khi HS xác nhận buổi học, tiền vào ví ngay. Admin có 7 ngày để kiểm tra nếu có khiếu nại.
+              Khi HS xác nhận buổi học, tiền vào ví khả dụng ngay. Nếu có khiếu nại, Admin xử lý riêng theo luồng tranh chấp.
             </Text>
           </View>
         </View>
@@ -209,6 +214,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   balanceValue: { fontSize: 30, fontWeight: 'bold', color: '#fff', marginTop: 6 },
+  balancePending: { fontSize: 12, color: '#FDE68A', marginTop: 6, fontWeight: '600' },
   balanceActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
   actionBtnPrimary: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

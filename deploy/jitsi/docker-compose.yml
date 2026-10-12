@@ -1,0 +1,141 @@
+# =============================================================================
+# EduTeach — Máy chủ Jitsi Meet RIÊNG (tự host trên VPS)
+# Dựa trên docker-jitsi-meet chính thức (https://github.com/jitsi/docker-jitsi-meet)
+# Chạy:  cp .env.example .env  →  sửa .env  →  docker compose up -d
+# =============================================================================
+
+services:
+  web:
+    image: jitsi/web:stable
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      - PUBLIC_URL
+      - ENABLE_HTTP_REDIRECT
+      - ENABLE_LETSENCRYPT
+      - LETSENCRYPT_DOMAIN
+      - LETSENCRYPT_EMAIL
+      - ENABLE_AUTH
+      - ENABLE_GUESTS
+      - AUTH_TYPE
+      - XMPP_DOMAIN
+      - XMPP_AUTH_DOMAIN
+      - XMPP_MUC_DOMAIN
+      - XMPP_RECORDER_DOMAIN
+      - XMPP_BOSH_URL_BASE
+      - TZ
+    volumes:
+      - ${CONFIG}/web:/config:Z
+      - ${CONFIG}/web/letsencrypt:/etc/letsencrypt
+    depends_on:
+      - prosody
+      - jicofo
+      - jvb
+    networks:
+      meet.jitsi:
+
+  prosody:
+    image: jitsi/prosody:stable
+    restart: unless-stopped
+    expose:
+      - '5222'
+      - '5347'
+      - '5280'
+    environment:
+      - AUTH_TYPE
+      - ENABLE_AUTH
+      - ENABLE_GUESTS
+      - JICOFO_AUTH_USER
+      - JICOFO_AUTH_PASSWORD
+      - JICOFO_COMPONENT_SECRET
+      - JVB_AUTH_USER
+      - JVB_AUTH_PASSWORD
+      - TURN_CREDENTIALS
+      - TURN_HOST
+      - TURN_PORT
+      - TURN_TRANSPORT
+      - XMPP_DOMAIN
+      - XMPP_AUTH_DOMAIN
+      - XMPP_BOSH_URL_BASE
+      - XMPP_CROSS_DOMAIN
+      - XMPP_GUEST_DOMAIN
+      - XMPP_INTERNAL_MUC_DOMAIN
+      - XMPP_MODULES
+      - XMPP_MUC_DOMAIN
+      - XMPP_MUC_MODULES
+      - XMPP_INTERNAL_MUC_MODULES
+      - XMPP_RECORDER_DOMAIN
+      - TZ
+    volumes:
+      - ${CONFIG}/prosody/config:/config:Z
+      - ${CONFIG}/prosody/prosody-plugins-custom:/prosody-plugins-custom:Z
+    networks:
+      meet.jitsi:
+        aliases:
+          - ${XMPP_DOMAIN}
+
+  jicofo:
+    image: jitsi/jicofo:stable
+    restart: unless-stopped
+    environment:
+      - JICOFO_AUTH_USER
+      - JICOFO_AUTH_PASSWORD
+      - JICOFO_COMPONENT_SECRET
+      - JICOFO_ENABLE_HEALTH_CHECKS
+      - XMPP_DOMAIN
+      - XMPP_AUTH_DOMAIN
+      - XMPP_MUC_DOMAIN
+      - XMPP_INTERNAL_MUC_DOMAIN
+      - XMPP_RECORDER_DOMAIN
+      - TZ
+    volumes:
+      - ${CONFIG}/jicofo:/config:Z
+    depends_on:
+      - prosody
+    networks:
+      meet.jitsi:
+
+  jvb:
+    image: jitsi/jvb:stable
+    restart: unless-stopped
+    ports:
+      - '10000:10000/udp'
+      - '10000:10000/tcp'
+    environment:
+      - JVB_AUTH_USER
+      - JVB_AUTH_PASSWORD
+      - JVB_STUN_SERVERS
+      - JVB_PORT
+      - JVB_TCP_PORT
+      - JVB_TCP_MAPPED_PORT
+      - JVB_BREWERY_MUC
+      - JVB_ENABLE_APIS
+      - JVB_HTTP_API_PORT
+      - XMPP_AUTH_DOMAIN
+      - XMPP_INTERNAL_MUC_DOMAIN
+      - XMPP_MUC_DOMAIN
+      - TZ
+    depends_on:
+      - prosody
+    networks:
+      meet.jitsi:
+
+  # TURN server riêng (bắt buộc để chạy ổn định trên mạng di động 4G/5G ở VN)
+  coturn:
+    image: jitsi/coturn:stable
+    restart: unless-stopped
+    ports:
+      - '${TURN_PORT}:${TURN_PORT}/${TURN_TRANSPORT}'
+      - '4445:4445/udp'
+      - '4445:4445/tcp'
+    environment:
+      - TURN_SECRET
+      - TURN_PORT
+      - TURN_TRANSPORT
+    networks:
+      meet.jitsi:
+
+networks:
+  meet.jitsi:

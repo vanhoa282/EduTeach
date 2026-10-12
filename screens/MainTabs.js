@@ -102,11 +102,14 @@ export default function MainTabs({ user: initialUser, onLogout }) {
   if (allTutorsFilter) {
     return <AllTutorsScreen user={user} initialCategory={allTutorsFilter.category} initialSearch={allTutorsFilter.search} onBack={() => setAllTutorsFilter(null)} onSelectTutor={(t) => { setAllTutorsFilter(null); setSelectedTutor(t); }} />;
   }
-  if (selectedCourseId) {
-    return <CourseDetailScreen courseId={selectedCourseId} onBack={() => { setSelectedCourseId(null); setRefreshKey(k => k + 1); }} onJoinClass={(session) => setActiveSession(session)} />;
-  }
+  // QUAN TRỌNG: phòng học phải được kiểm tra TRƯỚC selectedCourseId —
+  // nếu không, khi HS bấm "Vào lớp" (setActiveSession) thì CourseDetail vẫn đè lên
+  // và màn hình không chuyển (bug "bấm không phản hồi").
   if (activeSession) {
     return <ClassroomScreen user={user} session={activeSession} onBack={() => setActiveSession(null)} />;
+  }
+  if (selectedCourseId) {
+    return <CourseDetailScreen courseId={selectedCourseId} onBack={() => { setSelectedCourseId(null); setRefreshKey(k => k + 1); }} onJoinClass={(session) => setActiveSession(session)} />;
   }
   if (paymentInfo) {
     return <PaymentScreen user={user} tutor={paymentInfo.tutor} booking={paymentInfo.booking} onBack={() => setPaymentInfo(null)} onSuccess={() => { setPaymentInfo(null); setBookingTutor(null); setSelectedTutor(null); setActiveTab('courses'); setRefreshKey(k => k + 1); }} />;

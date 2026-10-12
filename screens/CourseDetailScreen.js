@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, TextInput, Modal, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_SESSION_KEY } from '../lib/auth/serverLogin';
@@ -148,6 +148,14 @@ export default function CourseDetailScreen({ courseId, onBack, onJoinClass }) {
   };
 
   useEffect(() => { load(); }, [courseId]);
+
+  // Tự cập nhật giờ buổi khi quay lại app (tránh nút "Vào lớp" bị khóa do dữ liệu cũ).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') load();
+    });
+    return () => sub.remove();
+  }, [courseId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -704,8 +712,16 @@ export default function CourseDetailScreen({ courseId, onBack, onJoinClass }) {
                             { backgroundColor: '#2563EB' },
                             !joinWin.open && { opacity: 0.4 },
                           ]}
-                          disabled={!joinWin.open}
-                          onPress={() => onJoinClass({ ...s, course })}
+                          onPress={() => {
+                            if (!joinWin.open) {
+                              Alert.alert(
+                                'Chưa tới giờ vào lớp',
+                                joinWin.hint || 'Thử kéo xuống để làm mới lịch buổi.'
+                              );
+                              return;
+                            }
+                            onJoinClass({ ...s, course });
+                          }}
                         >
                           <Ionicons name="videocam" size={14} color="#fff" />
                           <Text style={styles.sessionBtnText}>

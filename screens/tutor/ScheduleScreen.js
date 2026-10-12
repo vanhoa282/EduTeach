@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
@@ -217,8 +217,16 @@ export default function ScheduleScreen({ user, onJoinClass }) {
                     <>
                       <TouchableOpacity 
                         style={[styles.joinBtn, !joinOpen && styles.joinBtnDisabled]}
-                        disabled={!joinOpen}
-                        onPress={() => onJoinClass(s)}
+                        onPress={() => {
+                          if (!joinOpen) {
+                            Alert.alert(
+                              'Chưa tới giờ vào lớp',
+                              joinHint || 'Thử kéo xuống để làm mới lịch dạy.'
+                            );
+                            return;
+                          }
+                          onJoinClass(s);
+                        }}
                       >
                         <Ionicons name="videocam" size={12} color="#fff" />
                         <Text style={styles.joinBtnText}>

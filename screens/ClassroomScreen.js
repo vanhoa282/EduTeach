@@ -5,36 +5,32 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { isParticipant } from '../lib/webrtc/session';
 
-const JITSI_DOMAIN = 'meet.jit.si';
+// ─────────────────────────────────────────────────────────────
+// PHÒNG HỌC QUA MEET API (meet.jit.si iframe API — miễn phí, không cần API key)
+// Chạy được cả Expo Go lẫn APK. Jitsi cung cấp sẵn:
+//   • hiện CẢ HAI người (tile view)  • chia sẻ màn hình  • chat
+//   • tắt/bật mic-cam  • fullscreen  • hiện thông báo người vào/rời
+// KHÔNG dùng intent://, KHÔNG mở app ngoài (disableDeepLinking).
+// ─────────────────────────────────────────────────────────────
 
-// Tên phòng: UUID đầy đủ của buổi học → không ai đoán được phòng,
-// chỉ HS + gia sư của buổi đó biết link (link nằm trong app).
+// Máy chủ Jitsi (đều dùng chung iframe API, KHÔNG cần đăng nhập Google):
+// - framatalk.org: Framasoft, khách vào thẳng không cần tài khoản (mặc định)
+// - meet.jit.si: máy chủ chính thức (gần đây hay đòi đăng nhập Google)
+// - meet.ffmuc.net: Freifunk München
+const JITSI_DOMAINS = ['framatalk.org', 'meet.jit.si', 'meet.ffmuc.net'];
+
 function buildRoomName(session) {
   const id = (session?.id || '').toString().trim();
   return id ? 'EduTeach_Session_' + id : '';
 }
 
-// Chặn người lạ: user phải là học sinh hoặc gia sư của buổi đó.
-function isParticipant(user, session) {
-  const uid = user?.id;
-  const course = session?.course || {};
-  const studentId = course.student_id || session.student_id;
-  const tutorId = course.tutor_id || session.tutor_id;
-
-  if (studentId && tutorId) return uid === studentId || uid === tutorId;
-  if (studentId) return uid === studentId;
-  if (tutorId) return uid === tutorId;
-  // Thiếu thông tin → vẫn vào được nhờ room name UUID không đoán được.
-  return true;
-}
-
-function buildJitsiHtml(roomName, displayName) {
+function buildJitsiHtml(roomName, displayName, domain) {
   const safeName = (displayName || 'Thành viên EduTeach')
     .replace(/[<>&"']/g, '')
     .slice(0, 40);
@@ -44,7 +40,7 @@ function buildJitsiHtml(roomName, displayName) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<script src="https://${JITSI_DOMAIN}/external_api.js"></script>
+<script src="https://${domain}/external_api.js"></script>
 <style>
   html, body, #meet { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
 </style>
@@ -60,7 +56,7 @@ function buildJitsiHtml(roomName, displayName) {
     }
   }
   function start() {
-    api = new JitsiMeetExternalAPI('${JITSI_DOMAIN}', {
+    api = new JitsiMeetExternalAPI('${domain}', {
       roomName: '${roomName}',
       width: '100%',
       height: '100%',
@@ -77,11 +73,16 @@ function buildJitsiHtml(roomName, displayName) {
         defaultLanguage: 'vi'
       },
       interfaceConfigOverwrite: {
-        TOOLBAR_BUTTONS: ['microphone', 'camera', 'raisehand', 'chat', 'tileview', 'fullscreen', 'hangup'],
+        TOOLBAR_ALWAYS_VISIBLE: true,
+        TOOLBAR_BUTTONS: [
+          'microphone', 'camera', 'desktop', 'raisehand',
+          'chat', 'tileview', 'fullscreen', 'hangup'
+        ],
         SHOW_JITSI_WATERMARK: false,
         SHOW_BRAND_WATERMARK: false,
         SHOW_POWERED_BY: false,
-        SHOW_CHROME_EXTENSION_BANNER: false
+        SHOW_CHROME_EXTENSION_BANNER: false,
+        DISABLE_JOIN_LEAVE_NOTIFICATIONS: false
       }
     });
 
@@ -91,6 +92,8 @@ function buildJitsiHtml(roomName, displayName) {
       'readyToClose',
       'audioMuteStatusChanged',
       'videoMuteStatusChanged',
+      'participantJoined',
+      'participantLeft',
       'errorOccurred'
     ];
     for (var i = 0; i < events.length; i++) {
@@ -100,9 +103,6 @@ function buildJitsiHtml(roomName, displayName) {
         });
       })(events[i]);
     }
-
-    api.addListener('participantLeft', function () { post('jitsiEvent', { event: 'participantLeft' }); });
-    api.addListener('participantJoined', function () { post('jitsiEvent', { event: 'participantJoined' }); });
 
     window.__jitsiApi = api;
     window.__jitsiCommand = function (cmd) {
@@ -126,19 +126,6 @@ function buildJitsiHtml(roomName, displayName) {
   }
   if (document.readyState === 'complete') onLoad();
   else window.addEventListener('load', onLoad);
-
-  window.addEventListener('message', function (ev) {
-    var data = ev && ev.data;
-    if (!data) return;
-    if (typeof data === 'string') {
-      try {
-        var m = JSON.parse(data);
-        if (m && m.cmd) {
-          if (m.cmd === 'command' && window.__jitsiCommand) window.__jitsiCommand(m.value);
-        }
-      } catch (e) {}
-    }
-  });
 })();
 </script>
 </body>
@@ -154,7 +141,10 @@ export default function ClassroomScreen({ user, session, onBack }) {
   const [failed, setFailed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
+  const [toast, setToast] = useState(null);
   const [webKey, setWebKey] = useState(1);
+  const [domainIndex, setDomainIndex] = useState(0);
+  const toastTimerRef = useRef(null);
 
   const roomName = useMemo(() => buildRoomName(session), [session?.id]);
   const allowed = useMemo(() => isParticipant(user, session), [user?.id, session]);
@@ -162,16 +152,23 @@ export default function ClassroomScreen({ user, session, onBack }) {
   const displayName = (user?.full_name || user?.name || 'Thành viên') +
     (user?.role === 'tutor' ? ' · Gia sư' : ' · Học sinh');
 
+  const domain = JITSI_DOMAINS[domainIndex];
+
   const html = useMemo(
-    () => (allowed && roomName ? buildJitsiHtml(roomName, displayName) : '<html><body></body></html>'),
+    () => (allowed && roomName ? buildJitsiHtml(roomName, displayName, domain) : '<html><body style="background:#0B1220"></body></html>'),
     [allowed, roomName, displayName]
   );
 
-  const subject = session?.course?.subject || session?.subject || 'Lớp học trực tuyến';
   const sessionNumber = session?.session_number || '?';
+  const subject = session?.course?.subject || session?.subject || 'Lớp học trực tuyến';
+
+  const showToast = (msg) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  };
 
   const sendCommand = (cmd) => {
-    if (!joined) return;
     try {
       webRef.current?.injectJavaScript(
         `window.__jitsiCommand && window.__jitsiCommand('${cmd}'); true;`
@@ -186,18 +183,25 @@ export default function ClassroomScreen({ user, session, onBack }) {
 
       if (msg.type === 'jitsiEvent') {
         const ev = msg.data?.event;
+        const payload = msg.data?.payload || {};
         if (ev === 'videoConferenceJoined') {
           setJoined(true);
           setLoading(false);
         } else if (ev === 'videoConferenceLeft' || ev === 'readyToClose') {
           setJoined(false);
         } else if (ev === 'audioMuteStatusChanged') {
-          setMuted(!!msg.data?.payload?.muted);
+          setMuted(!!payload.muted);
         } else if (ev === 'videoMuteStatusChanged') {
-          setCamOff(!!msg.data?.payload?.muted);
+          setCamOff(!!payload.muted);
+        } else if (ev === 'participantJoined') {
+          const name = payload.displayName || 'Thành viên';
+          showToast(name + ' đã vào phòng');
+        } else if (ev === 'participantLeft') {
+          const name = payload.displayName || 'Thành viên';
+          showToast(name + ' đã rời phòng');
         } else if (ev === 'errorOccurred') {
           setFailed(true);
-          setErrorMsg('Phòng học báo lỗi kết nối. Thử tải lại.');
+          setErrorMsg('Phòng học báo lỗi kết nối. Bấm "Thử lại".');
         }
       } else if (msg.type === 'jitsiError') {
         setFailed(true);
@@ -218,8 +222,6 @@ export default function ClassroomScreen({ user, session, onBack }) {
     if (joined) sendCommand('hangup');
     onBack();
   };
-
-  // ===== UI TRẠNG THÁI =====
 
   if (!allowed) {
     return (
@@ -258,14 +260,15 @@ export default function ClassroomScreen({ user, session, onBack }) {
             <Text style={styles.headerTitle} numberOfLines={1}>
               Phòng học · Buổi {sessionNumber}
             </Text>
-            <Text style={styles.headerSub} numberOfLines={1}>{subject}</Text>
+            <Text style={styles.headerSub} numberOfLines={1}>
+              {subject + ' · Máy chủ: ' + domain}
+            </Text>
           </View>
           <TouchableOpacity
             onPress={() => setFullscreen(true)}
             style={styles.iconBtn}
-            disabled={!joined}
           >
-            <Ionicons name="expand-outline" size={22} color={joined ? '#2563EB' : '#D1D5DB'} />
+            <Ionicons name="expand-outline" size={22} color="#2563EB" />
           </TouchableOpacity>
         </View>
       )}
@@ -275,7 +278,7 @@ export default function ClassroomScreen({ user, session, onBack }) {
           key={webKey}
           ref={webRef}
           originWhitelist={['https://*', 'http://*']}
-          source={{ html, baseUrl: 'https://' + JITSI_DOMAIN + '/' }}
+          source={{ html, baseUrl: 'https://' + domain + '/' }}
           style={styles.webview}
           javaScriptEnabled
           domStorageEnabled
@@ -295,7 +298,6 @@ export default function ClassroomScreen({ user, session, onBack }) {
             setErrorMsg('Không kết nối được máy chủ Jitsi. Kiểm tra mạng rồi thử lại.');
           }}
           onShouldStartLoadWithRequest={(req) => {
-            // KHÔNG BAO GIỜ mở intent:// hay app ngoài.
             if (!req?.url) return false;
             const url = req.url.toLowerCase();
             if (url.startsWith('intent://') ||
@@ -335,18 +337,39 @@ export default function ClassroomScreen({ user, session, onBack }) {
               <Ionicons name="refresh" size={16} color="#fff" />
               <Text style={styles.primaryBtnText}>Thử lại</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: '#4B5563' }]}
+              onPress={() => {
+                setDomainIndex(i => (i + 1) % JITSI_DOMAINS.length);
+                retry();
+              }}
+            >
+              <Ionicons name="swap-horizontal" size={16} color="#fff" />
+              <Text style={styles.primaryBtnText}>Đổi máy chủ</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {toast && (
+          <View style={styles.toastBox}>
+            <Ionicons name="notifications" size={15} color="#fff" />
+            <Text style={styles.toastText}>{toast}</Text>
           </View>
         )}
       </View>
 
       {!fullscreen && (
-        <View style={styles.bottomBar}>
+        <View style={styles.controlsBar}>
           <TouchableOpacity
             style={[styles.ctrlBtn, muted && styles.ctrlBtnActive]}
             onPress={() => sendCommand('toggleAudio')}
             disabled={!joined}
           >
-            <Ionicons name={muted ? 'mic-off' : 'mic'} size={20} color={muted ? '#EF4444' : '#111827'} />
+            <Ionicons
+              name={muted ? 'mic-off' : 'mic'}
+              size={20}
+              color={muted ? '#EF4444' : '#111827'}
+            />
             <Text style={styles.ctrlText}>{muted ? 'Bật mic' : 'Tắt mic'}</Text>
           </TouchableOpacity>
 
@@ -355,15 +378,39 @@ export default function ClassroomScreen({ user, session, onBack }) {
             onPress={() => sendCommand('toggleVideo')}
             disabled={!joined}
           >
-            <Ionicons name={camOff ? 'videocam-off' : 'videocam'} size={20} color={camOff ? '#EF4444' : '#111827'} />
+            <Ionicons
+              name={camOff ? 'videocam-off' : 'videocam'}
+              size={20}
+              color={camOff ? '#EF4444' : '#111827'}
+            />
             <Text style={styles.ctrlText}>{camOff ? 'Bật cam' : 'Tắt cam'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.leaveBtn}
-            onPress={leaveRoom}
+            style={styles.ctrlBtn}
+            onPress={() => {
+              setDomainIndex(i => (i + 1) % JITSI_DOMAINS.length);
+              retry();
+            }}
           >
-            <Ionicons name="call" size={18} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+            <Ionicons name="server-outline" size={18} color="#111827" />
+            <Text style={styles.ctrlText}>Đổi máy chủ</Text>
+          </TouchableOpacity>
+
+          <View style={styles.hintBox}>
+            <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
+            <Text style={styles.hintText}>
+              Chia sẻ màn hình + chat + 2 khung: chạm giữa màn hình để hiện thanh công cụ Jitsi
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.leaveBtn} onPress={leaveRoom}>
+            <Ionicons
+              name="call"
+              size={18}
+              color="#fff"
+              style={{ transform: [{ rotate: '135deg' }] }}
+            />
             <Text style={styles.leaveText}>Rời phòng</Text>
           </TouchableOpacity>
         </View>
@@ -386,13 +433,9 @@ export default function ClassroomScreen({ user, session, onBack }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
   },
   iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
   headerInfo: { flex: 1, marginLeft: 4 },
@@ -403,10 +446,8 @@ const styles = StyleSheet.create({
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#0B1220',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-    paddingHorizontal: 32,
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 10, paddingHorizontal: 32,
   },
   loadingText: { marginTop: 14, fontSize: 14, color: '#9CA3AF' },
   errIconBox: {
@@ -434,27 +475,35 @@ const styles = StyleSheet.create({
     fontSize: 14, color: '#6B7280', textAlign: 'center',
     marginTop: 10, lineHeight: 21,
   },
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+  toastBox: {
+    position: 'absolute', top: 12, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(16,185,129,0.95)',
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22,
+    marginHorizontal: 24, zIndex: 30,
+  },
+  toastText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  controlsBar: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    justifyContent: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 12,
+    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#E5E7EB',
   },
   ctrlBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 16, paddingVertical: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: 22, backgroundColor: '#F3F4F6',
   },
   ctrlBtnActive: { backgroundColor: '#FEF2F2' },
   ctrlText: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  hintBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    maxWidth: 180,
+  },
+  hintText: { fontSize: 11, color: '#9CA3AF', flexShrink: 1, lineHeight: 15 },
   leaveBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#EF4444', paddingHorizontal: 18, paddingVertical: 10,
+    backgroundColor: '#EF4444', paddingHorizontal: 16, paddingVertical: 10,
     borderRadius: 22,
   },
   leaveText: { color: '#fff', fontSize: 13, fontWeight: '700' },

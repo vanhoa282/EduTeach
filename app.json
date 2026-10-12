@@ -21,7 +21,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vanhoa282.eduteach"
+      "bundleIdentifier": "com.vanhoa282.eduteach",
+      "infoPlist": {
+        "NSCameraUsageDescription": "EduTeach cần camera để học trực tuyến trong phòng học.",
+        "NSMicrophoneUsageDescription": "EduTeach cần micro để trao đổi trong phòng học."
+      }
     },
     "android": {
       "package": "com.vanhoa282.eduteach",

@@ -17,6 +17,7 @@ const isExpoGo = Constants.executionEnvironment === 'storeClient';
 let Notifications = null;
 let registerForPushNotifications = null;
 let savePushToken = null;
+let syncSessionReminders = null;
 
 if (!isExpoGo) {
   try {
@@ -24,6 +25,7 @@ if (!isExpoGo) {
     const notif = require('./lib/notifications');
     registerForPushNotifications = notif.registerForPushNotifications;
     savePushToken = notif.savePushToken;
+    syncSessionReminders = notif.syncSessionReminders;
   } catch (e) {
     console.log('Notif init fail:', e.message);
   }
@@ -81,6 +83,7 @@ function AppInner() {
       try {
         const token = await registerForPushNotifications();
         if (mounted && token && savePushToken) await savePushToken(user.id, token);
+        if (mounted && syncSessionReminders) await syncSessionReminders(user.id);
       } catch (e) {
         console.log('Push setup error:', e.message);
       }

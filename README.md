@@ -219,30 +219,38 @@ Realtime bat: messages, conversations, notifications
 - Khoá học đã đặt: Đổi giờ buổi (RPC eduteach_reschedule_session) + Huỷ buổi trước 24h (RPC eduteach_cancel_session)
 - SQL mới: supabase/sql/03_classroom_cancel_reschedule.sql (DÁN vào SQL Editor)
 
-## PHONG HOC ONLINE (JITSI)
-- screens/ClassroomScreen.js: Jitsi Meet qua WebView (react-native-webview) — KHONG mở app ngoài
+## PHONG HOC ONLINE (MEET API — meet.jit.si iframe API, miễn phí, không cần API key)
+- screens/ClassroomScreen.js: Jitsi Meet qua WebView (react-native-webview) — KHONG intent://, KHONG mở app ngoài
 - Room: https://meet.jit.si/EduTeach_Session_<session_id> (UUID đầy đủ → không đoán được phòng)
+- Jitsi cung cấp sẵn: hiện CẢ HAI người (tile view), CHIA SẺ MÀN HÌNH, CHAT, bật/tắt mic-cam, fullscreen, thông báo người vào/rời
 - Cấu hình: disableDeepLinking=true (chặn intent://), startWithAudioMuted/VideoMuted, prejoin off, tiếng Việt
-- Nút: Bật/Tắt mic, Bật/Tắt cam, Toàn màn hình, Rời phòng; loading/error state + nút thử lại
-- Chỉ HS + gia sư của buổi vào được (check tham gia ở app); giới hạn của meet.jit.si free: không có xác thực server-side — nếu cần bảo mật tuyệt đối thì dùng JaaS JWT (kế hoạch sau)
+- Nút app: Bật/Tắt mic, Bật/Tắt cam, Toàn màn hình, Rời phòng; loading/error state + nút thử lại
+- Chỉ HS + gia sư của buổi vào được (check tham gia ở app)
 - Vào lớp: mở 15 phút trước giờ học, đóng 30 phút sau khi kết thúc (cả HS lẫn gia sư)
-- Android cần quyền CAMERA + RECORD_AUDIO (đã thêm trong app.json)
+- Chạy được CẢ Expo Go lẫn APK
+- Ghi chú: bản WebRTC native (react-native-webrtc + Supabase signaling) đã thử nhưng không ổn định
+  trên thiết bị thật — code giữ lại trong lib/webrtc/ (peer.js, signaling.js) + supabase/sql/04_webrtc_signaling.sql
+  nếu sau này muốn quay lại (cần TURN server để hoạt động ổn định qua mạng di động).
+
+## TEST & DEPLOY CHECK
+- node tests/check-deploy.mjs → kiểm tra 5 Edge Functions + SQL 03/04 + bảng/cột cần thiết
+- Unit test: node tests/*.test.mjs (booking + webrtc helpers)
+- Test booking thủ công: xem phần QUY TRINH; luồng chuẩn: chọn gia sư → đặt lịch (chọn 10/20/30 buổi, nút "Thay đổi" từng buổi) → tạo đơn → thanh toán → admin duyệt → sessions sinh theo locks
+- Test phòng học: cần 2 máy (1 HS + 1 gia sư) cài development build, vào cùng buổi pending trong cửa sổ giờ học
 
 ## CON LAI
 ### Uu tien cao (truoc khi len Play/App Store)
-- Deploy + test secure booking end-to-end tren may that
-- Chay SQL 03 + test huỷ buổi / đổi giờ / vào phòng trên máy thật
-- Chuyen production sang Firebase Auth / FCM (README: demo dung Supabase)
-- Khoa RLS: chan client INSERT courses/orders sau khi cutover on dinh
+- Chay SQL 03 + 04 + test huỷ buổi / đổi giờ / phòng học native tren may that
+- Chuyen production sang Firebase Auth (code da san: lib/firebaseAuth.js + Edge firebase-verify + docs/FIREBASE_SETUP.md — chua bat FIREBASE_AUTH_ENABLED)
+- Khoa RLS: da viet supabase/sql/05_harden_rls.sql (chan client INSERT/DELETE courses+orders; production chan them UPDATE sau khi chuyen admin approve qua Edge)
 - OTP SDT (esms.vn) + eKYC CCCD gia su
-- Privacy Policy + Terms + in-app support thuc (TermsScreen đã có bản nội bộ)
-- Thong bao buoi sap toi (push) — expo-notifications + push-webhook đã có khung
+- Host Privacy Policy len GitHub Pages (docs/privacy-policy.html + docs/terms-of-service.html da tao)
 
 ### Trung binh
-- Doi icon + splash store-ready (assets/icon.png + splash.png hiện là bản tạm)
-- Tu dong pending vi -> available sau 7 ngay
+- Da tao icon/splash moi bang ImageMagick (assets/) — kiem tra truc quan truoc khi len store
+- Vi gia su: tien vao khả dụng ngay khi HS xac nhan buoi (SQL 07 de lai nhu co che pending tuy chon neu sau nay muon giu tien khieu nai)
+- Da them nhac buoi hoc truoc 30 phut (local notification lib/notifications.js + SQL 06 server-side)
 - Build APK/AAB production (EAS production profile)
-- JaaS JWT cho phòng học nếu cần chặn người lạ tuyệt đối
 
 ### Thap
 - Ho kinh doanh + TK doanh nghiep ACB
@@ -302,7 +310,7 @@ Realtime bat: messages, conversations, notifications
 
 ## VERSION
 Last update: 2026-10-11
-Version: MVP 1.6 (Phòng học Jitsi + nút Thay đổi buổi + huỷ/đổi giờ trước 24h + SQL 03)
+Version: MVP 1.7 (Phòng học WebRTC native + SQL 04-07 + Firebase Auth sẵn sàng + Privacy Policy + nhắc buổi học + ví duyệt liền)
 
 ---
 

@@ -7,7 +7,8 @@
 --       + bảng booking_slot_locks + eduteach_auth_sessions).
 -- =============================================================================
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Supabase cài sẵn pgcrypto trong schema 'extensions' (nếu chưa có thì tạo tại đó).
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 -- Cột ghi nhận thời điểm huỷ / đổi giờ (dùng cho thống kê, hỗ trợ)
 ALTER TABLE public.sessions
@@ -29,7 +30,7 @@ RETURNS uuid
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = public, extensions
 AS $$
   SELECT s.user_id
   FROM public.eduteach_auth_sessions s
@@ -39,7 +40,7 @@ AS $$
         (coalesce(nullif(current_setting('request.headers', true), ''), '{}')::json)
           ->> 'x-eduteach-session'
       ), ''), ''),
-      'sha256'
+      'sha256'::text
     ),
     'hex'
   )
