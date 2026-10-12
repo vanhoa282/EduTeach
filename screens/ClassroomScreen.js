@@ -1,228 +1,415 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  NativeModules,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { isParticipant } from '../lib/webrtc/session';
+import Constants from 'expo-constants';
+import { EduTeachPeer } from '../lib/webrtc/peer';
+import {
+  isOfferer,
+  isParticipant,
+  newOfferId,
+  nextReconnectDelay,
+  MAX_RECONNECT_ATTEMPTS,
+} from '../lib/webrtc/session';
+import { subscribeSignaling, sendSignal, clearSignals } from '../lib/webrtc/signaling';
 
-// ─────────────────────────────────────────────────────────────
-// PHÒNG HỌC QUA MEET API (meet.jit.si iframe API — miễn phí, không cần API key)
-// Chạy được cả Expo Go lẫn APK. Jitsi cung cấp sẵn:
-//   • hiện CẢ HAI người (tile view)  • chia sẻ màn hình  • chat
-//   • tắt/bật mic-cam  • fullscreen  • hiện thông báo người vào/rời
-// KHÔNG dùng intent://, KHÔNG mở app ngoài (disableDeepLinking).
-// ─────────────────────────────────────────────────────────────
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+const hasWebRTC = !!NativeModules.WebRTCModule;
 
-// Máy chủ Jitsi (đều dùng chung iframe API, KHÔNG cần đăng nhập Google):
-// - framatalk.org: Framasoft, khách vào thẳng không cần tài khoản (mặc định)
-// - meet.jit.si: máy chủ chính thức (gần đây hay đòi đăng nhập Google)
-// - meet.ffmuc.net: Freifunk München
-const JITSI_DOMAINS = ['framatalk.org', 'meet.jit.si', 'meet.ffmuc.net'];
-
-function buildRoomName(session) {
-  const id = (session?.id || '').toString().trim();
-  return id ? 'EduTeach_Session_' + id : '';
+function getRTCView() {
+  if (!hasWebRTC) return null;
+  try {
+    return require('react-native-webrtc').RTCView;
+  } catch (e) {
+    return null;
+  }
 }
 
-function buildJitsiHtml(roomName, displayName, domain) {
-  const safeName = (displayName || 'Thành viên EduTeach')
-    .replace(/[<>&"']/g, '')
-    .slice(0, 40);
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<script src="https://${domain}/external_api.js"></script>
-<style>
-  html, body, #meet { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-</style>
-</head>
-<body>
-<div id="meet"></div>
-<script>
-(function () {
-  var api = null;
-  function post(type, data) {
-    if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, data: data || {} }));
-    }
-  }
-  function start() {
-    api = new JitsiMeetExternalAPI('${domain}', {
-      roomName: '${roomName}',
-      width: '100%',
-      height: '100%',
-      parentNode: document.getElementById('meet'),
-      userInfo: { displayName: '${safeName}' },
-      configOverwrite: {
-        startWithAudioMuted: true,
-        startWithVideoMuted: true,
-        prejoinPageEnabled: false,
-        disableDeepLinking: true,
-        disableThirdPartyRequests: true,
-        requireDisplayName: true,
-        enableClosePage: false,
-        defaultLanguage: 'vi'
-      },
-      interfaceConfigOverwrite: {
-        TOOLBAR_ALWAYS_VISIBLE: true,
-        TOOLBAR_BUTTONS: [
-          'microphone', 'camera', 'desktop', 'raisehand',
-          'chat', 'tileview', 'fullscreen', 'hangup'
-        ],
-        SHOW_JITSI_WATERMARK: false,
-        SHOW_BRAND_WATERMARK: false,
-        SHOW_POWERED_BY: false,
-        SHOW_CHROME_EXTENSION_BANNER: false,
-        DISABLE_JOIN_LEAVE_NOTIFICATIONS: false
-      }
-    });
-
-    var events = [
-      'videoConferenceJoined',
-      'videoConferenceLeft',
-      'readyToClose',
-      'audioMuteStatusChanged',
-      'videoMuteStatusChanged',
-      'participantJoined',
-      'participantLeft',
-      'errorOccurred'
-    ];
-    for (var i = 0; i < events.length; i++) {
-      (function (ev) {
-        api.addListener(ev, function (payload) {
-          post('jitsiEvent', { event: ev, payload: payload || {} });
-        });
-      })(events[i]);
-    }
-
-    window.__jitsiApi = api;
-    window.__jitsiCommand = function (cmd) {
-      if (!api) return false;
-      try {
-        if (cmd === 'toggleAudio') api.executeCommand('toggleAudio');
-        else if (cmd === 'toggleVideo') api.executeCommand('toggleVideo');
-        else if (cmd === 'hangup') api.executeCommand('hangup');
-        return true;
-      } catch (e) {
-        post('jitsiError', { message: String(e && e.message ? e.message : e) });
-        return false;
-      }
-    };
-  }
-
-  function onLoad() {
-    try { start(); } catch (e) {
-      post('jitsiError', { message: 'Không khởi động được Jitsi: ' + (e && e.message ? e.message : e) });
-    }
-  }
-  if (document.readyState === 'complete') onLoad();
-  else window.addEventListener('load', onLoad);
-})();
-</script>
-</body>
-</html>`;
-}
+const OFFER_INTERVAL_MS = 3500;
+const STATUS = {
+  connecting: 'Đang kết nối',
+  connected: 'Đã kết nối',
+  disconnected: 'Mất kết nối',
+};
 
 export default function ClassroomScreen({ user, session, onBack }) {
-  const webRef = useRef(null);
+  const peerRef = useRef(null);
+  const subRef = useRef(null);
+  const offerTimerRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectPendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const currentOfferIdRef = useRef(null);
+  const facingRef = useRef('user');
+
   const [loading, setLoading] = useState(true);
-  const [joined, setJoined] = useState(false);
-  const [muted, setMuted] = useState(true);
-  const [camOff, setCamOff] = useState(true);
   const [failed, setFailed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [connStatus, setConnStatus] = useState(STATUS.connecting);
+  const [muted, setMuted] = useState(false);
+  const [camOff, setCamOff] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [toast, setToast] = useState(null);
-  const [webKey, setWebKey] = useState(1);
-  const [domainIndex, setDomainIndex] = useState(0);
-  const toastTimerRef = useRef(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [retryKey, setRetryKey] = useState(0);
 
-  const roomName = useMemo(() => buildRoomName(session), [session?.id]);
   const allowed = useMemo(() => isParticipant(user, session), [user?.id, session]);
-
-  const displayName = (user?.full_name || user?.name || 'Thành viên') +
-    (user?.role === 'tutor' ? ' · Gia sư' : ' · Học sinh');
-
-  const domain = JITSI_DOMAINS[domainIndex];
-
-  const html = useMemo(
-    () => (allowed && roomName ? buildJitsiHtml(roomName, displayName, domain) : '<html><body style="background:#0B1220"></body></html>'),
-    [allowed, roomName, displayName]
-  );
-
+  const offerer = useMemo(() => isOfferer(user), [user?.role]);
+  const sessionId = session?.id;
   const sessionNumber = session?.session_number || '?';
   const subject = session?.course?.subject || session?.subject || 'Lớp học trực tuyến';
 
-  const showToast = (msg) => {
-    setToast(msg);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
-  };
+  const cleanup = useCallback(async ({ notifyLeave = false } = {}) => {
+    if (offerTimerRef.current) {
+      clearInterval(offerTimerRef.current);
+      offerTimerRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (subRef.current) {
+      try { subRef.current.unsubscribe(); } catch (e) {}
+      subRef.current = null;
+    }
+    if (notifyLeave && sessionId && user?.id) {
+      try { await sendSignal(sessionId, user.id, 'leave', {}); } catch (e) {}
+      try { await clearSignals(sessionId); } catch (e) {}
+    }
+    if (peerRef.current) {
+      try { peerRef.current.close(); } catch (e) {}
+      peerRef.current = null;
+    }
+    if (mountedRef.current) {
+      setLocalStream(null);
+      setRemoteStream(null);
+    }
+  }, [sessionId, user?.id]);
 
-  const sendCommand = (cmd) => {
-    try {
-      webRef.current?.injectJavaScript(
-        `window.__jitsiCommand && window.__jitsiCommand('${cmd}'); true;`
-      );
-    } catch (e) {}
-  };
+  const scheduleReconnect = useCallback(() => {
+    if (!mountedRef.current || !offerer) return;
+    if (reconnectPendingRef.current) return;
+    if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      setFailed(true);
+      setErrorMsg('Mất kết nối quá nhiều lần. Bấm "Thử lại".');
+      setConnStatus(STATUS.disconnected);
+      return;
+    }
+    reconnectPendingRef.current = true;
+    const delay = nextReconnectDelay(reconnectAttemptRef.current);
+    reconnectAttemptRef.current += 1;
+    setConnStatus(STATUS.disconnected);
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectPendingRef.current = false;
+      if (!mountedRef.current) return;
+      const peer = peerRef.current;
+      if (!peer || peer.closed) return;
+      try {
+        peer.closePc();
+        peer.createPc();
+        currentOfferIdRef.current = null;
+        setRemoteStream(null);
+        setConnStatus(STATUS.connecting);
+      } catch (e) {}
+    }, delay);
+  }, [offerer]);
 
-  const handleMessage = (event) => {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data);
-      if (!msg || typeof msg !== 'object') return;
+  const handlePeerEvent = useCallback((event) => {
+    if (!mountedRef.current || !event) return;
 
-      if (msg.type === 'jitsiEvent') {
-        const ev = msg.data?.event;
-        const payload = msg.data?.payload || {};
-        if (ev === 'videoConferenceJoined') {
-          setJoined(true);
-          setLoading(false);
-        } else if (ev === 'videoConferenceLeft' || ev === 'readyToClose') {
-          setJoined(false);
-        } else if (ev === 'audioMuteStatusChanged') {
-          setMuted(!!payload.muted);
-        } else if (ev === 'videoMuteStatusChanged') {
-          setCamOff(!!payload.muted);
-        } else if (ev === 'participantJoined') {
-          const name = payload.displayName || 'Thành viên';
-          showToast(name + ' đã vào phòng');
-        } else if (ev === 'participantLeft') {
-          const name = payload.displayName || 'Thành viên';
-          showToast(name + ' đã rời phòng');
-        } else if (ev === 'errorOccurred') {
-          setFailed(true);
-          setErrorMsg('Phòng học báo lỗi kết nối. Bấm "Thử lại".');
+    if (event.type === 'remotestream' && event.stream) {
+      setRemoteStream(event.stream);
+    }
+
+    if (event.type === 'connectionstate') {
+      const state = event.state;
+      if (state === 'connected') {
+        reconnectAttemptRef.current = 0;
+        reconnectPendingRef.current = false;
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
         }
-      } else if (msg.type === 'jitsiError') {
-        setFailed(true);
-        setErrorMsg(msg.data?.message || 'Không khởi động được phòng học.');
+        setConnStatus(STATUS.connected);
+        setLoading(false);
+        setFailed(false);
+      } else if (state === 'connecting' || state === 'checking') {
+        setConnStatus(STATUS.connecting);
+      } else if (state === 'disconnected' || state === 'failed') {
+        setConnStatus(STATUS.disconnected);
+        scheduleReconnect();
+      } else if (state === 'closed') {
+        setConnStatus(STATUS.disconnected);
       }
-    } catch (e) {}
+    }
+
+    if (event.type === 'iceconnectionstate') {
+      const state = event.state;
+      if (state === 'connected' || state === 'completed') {
+        reconnectAttemptRef.current = 0;
+        reconnectPendingRef.current = false;
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        setConnStatus(STATUS.connected);
+        setLoading(false);
+      } else if (state === 'disconnected' || state === 'failed') {
+        setConnStatus(STATUS.disconnected);
+        scheduleReconnect();
+      }
+    }
+  }, [scheduleReconnect]);
+
+  const startOfferLoop = useCallback(() => {
+    if (offerTimerRef.current) clearInterval(offerTimerRef.current);
+
+    const tick = async () => {
+      const peer = peerRef.current;
+      if (!peer || peer.closed || !sessionId || !user?.id) return;
+      if (peer.pc?.connectionState === 'connected') return;
+      try {
+        const offerId = newOfferId();
+        currentOfferIdRef.current = offerId;
+        const payload = await peer.sendOffer(offerId);
+        if (payload && mountedRef.current) {
+          await sendSignal(sessionId, user.id, 'offer', payload);
+        }
+      } catch (e) {
+        // mất mạng tạm → vòng sau gửi tiếp
+      }
+    };
+
+    tick();
+    offerTimerRef.current = setInterval(tick, OFFER_INTERVAL_MS);
+  }, [sessionId, user?.id]);
+
+  const handleSignal = useCallback(async (row) => {
+    if (!row || !mountedRef.current) return;
+    if (row.sender_id === user?.id) return;
+    const peer = peerRef.current;
+    if (!peer || peer.closed) return;
+
+    const kind = row.kind;
+    const payload = row.payload || {};
+
+    try {
+      if (kind === 'offer' && !offerer) {
+        const answer = await peer.handleOffer(payload);
+        if (answer && sessionId && user?.id) {
+          await sendSignal(sessionId, user.id, 'answer', answer);
+        }
+      } else if (kind === 'answer' && offerer) {
+        if (
+          currentOfferIdRef.current &&
+          payload.offer_id &&
+          payload.offer_id !== currentOfferIdRef.current
+        ) {
+          return;
+        }
+        await peer.handleAnswer(payload);
+      } else if (kind === 'ice') {
+        await peer.handleIce(payload);
+      } else if (kind === 'leave') {
+        setRemoteStream(null);
+        setConnStatus(STATUS.disconnected);
+        if (offerer) scheduleReconnect();
+      }
+    } catch (e) {
+      if (mountedRef.current) {
+        setFailed(true);
+        setErrorMsg(e?.message || 'Lỗi trao đổi tín hiệu kết nối.');
+        setLoading(false);
+      }
+    }
+  }, [user?.id, offerer, sessionId, scheduleReconnect]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    if (isExpoGo || !hasWebRTC) return undefined;
+    if (!allowed || !sessionId || !user?.id) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      setFailed(false);
+      setErrorMsg('');
+      setConnStatus(STATUS.connecting);
+      setRemoteStream(null);
+      reconnectAttemptRef.current = 0;
+
+      try {
+        const peer = new EduTeachPeer({
+          isOfferer: offerer,
+          onEvent: (ev) => {
+            if (!cancelled) handlePeerEvent(ev);
+          },
+        });
+        peerRef.current = peer;
+
+        const stream = await peer.initLocalMedia(facingRef.current);
+        if (cancelled) {
+          peer.close();
+          return;
+        }
+        setLocalStream(stream);
+        peer.createPc();
+
+        // Gửi ICE candidate qua signaling
+        const prevOnEvent = peer.onEvent;
+        peer.onEvent = (ev) => {
+          prevOnEvent(ev);
+          if (ev?.type === 'ice' && ev.candidate && sessionId && user?.id && !cancelled) {
+            sendSignal(sessionId, user.id, 'ice', { candidate: ev.candidate }).catch(() => {});
+          }
+        };
+
+        subRef.current = subscribeSignaling(sessionId, (row) => {
+          if (!cancelled) handleSignal(row);
+        });
+
+        if (offerer) {
+          try { await clearSignals(sessionId); } catch (e) {}
+          startOfferLoop();
+        }
+
+        if (mountedRef.current) setLoading(false);
+      } catch (e) {
+        if (cancelled || !mountedRef.current) return;
+        setFailed(true);
+        setLoading(false);
+        setErrorMsg(e?.message || 'Không khởi tạo được camera/mic.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      mountedRef.current = false;
+      cleanup({ notifyLeave: true });
+    };
+  }, [
+    allowed,
+    sessionId,
+    user?.id,
+    offerer,
+    retryKey,
+    handlePeerEvent,
+    handleSignal,
+    startOfferLoop,
+    cleanup,
+  ]);
+
+  const toggleMute = () => {
+    const peer = peerRef.current;
+    const stream = peer?.localStream;
+    if (!stream) return;
+    const next = !muted;
+    for (const t of stream.getAudioTracks()) {
+      t.enabled = !next;
+    }
+    setMuted(next);
+  };
+
+  const toggleCam = () => {
+    const peer = peerRef.current;
+    const stream = peer?.localStream;
+    if (!stream) return;
+    const next = !camOff;
+    for (const t of stream.getVideoTracks()) {
+      t.enabled = !next;
+    }
+    setCamOff(next);
+  };
+
+  const flipCamera = async () => {
+    const peer = peerRef.current;
+    if (!peer || peer.closed || camOff) return;
+    const nextFacing = facingRef.current === 'user' ? 'environment' : 'user';
+    try {
+      const camStream = await peer.getCameraStream(nextFacing);
+      const newTrack = camStream.getVideoTracks()[0];
+      if (!newTrack) return;
+
+      const oldTrack = peer.localStream?.getVideoTracks()?.[0];
+      if (peer.localStream && oldTrack) {
+        peer.localStream.removeTrack(oldTrack);
+        peer.localStream.addTrack(newTrack);
+        try { oldTrack.stop(); } catch (e) {}
+      }
+
+      const sender = peer.pc?.getSenders?.()?.find((s) => s.track && s.track.kind === 'video');
+      if (sender) {
+        await sender.replaceTrack(newTrack);
+      }
+
+      facingRef.current = nextFacing;
+      setLocalStream(peer.localStream);
+      // Dọn audio-less stream container (track đã chuyển sang localStream)
+      for (const t of camStream.getTracks()) {
+        if (t !== newTrack) {
+          try { t.stop(); } catch (e) {}
+        }
+      }
+    } catch (e) {
+      setErrorMsg(e?.message || 'Không đổi được camera.');
+    }
   };
 
   const retry = () => {
     setFailed(false);
     setErrorMsg('');
     setLoading(true);
-    setJoined(false);
-    setWebKey(k => k + 1);
+    setConnStatus(STATUS.connecting);
+    reconnectAttemptRef.current = 0;
+    setRetryKey((k) => k + 1);
   };
 
-  const leaveRoom = () => {
-    if (joined) sendCommand('hangup');
+  const leaveRoom = async () => {
+    await cleanup({ notifyLeave: true });
     onBack();
   };
 
+  // ── Expo Go / thiếu native module ──────────────────────────────────────
+  if (isExpoGo || !hasWebRTC) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.iconBtn}>
+            <Ionicons name="arrow-back" size={24} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Phòng học</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.centerBox}>
+          <View style={[styles.lockIconBox, { backgroundColor: '#DBEAFE' }]}>
+            <Ionicons name="phone-portrait-outline" size={40} color="#2563EB" />
+          </View>
+          <Text style={styles.blockTitle}>Cần development build</Text>
+          <Text style={styles.blockDesc}>
+            Phòng học WebRTC native không chạy trên Expo Go. Hãy dùng{'\n'}
+            npx expo run:android{'\n'}
+            hoặc eas build --profile development.
+          </Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={onBack}>
+            <Text style={styles.primaryBtnText}>Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Chặn người lạ ──────────────────────────────────────────────────────
   if (!allowed) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -249,80 +436,77 @@ export default function ClassroomScreen({ user, session, onBack }) {
     );
   }
 
+  const RTCView = getRTCView();
+  const statusColor =
+    connStatus === STATUS.connected
+      ? '#10B981'
+      : connStatus === STATUS.disconnected
+        ? '#EF4444'
+        : '#F59E0B';
+
   return (
     <SafeAreaView style={styles.container} edges={fullscreen ? [] : ['top']}>
       {!fullscreen && (
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.iconBtn}>
+          <TouchableOpacity onPress={leaveRoom} style={styles.iconBtn}>
             <Ionicons name="arrow-back" size={24} color="#111" />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               Phòng học · Buổi {sessionNumber}
             </Text>
-            <Text style={styles.headerSub} numberOfLines={1}>
-              {subject + ' · Máy chủ: ' + domain}
-            </Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={styles.headerSub} numberOfLines={1}>
+                {subject} · {connStatus}
+              </Text>
+            </View>
           </View>
-          <TouchableOpacity
-            onPress={() => setFullscreen(true)}
-            style={styles.iconBtn}
-          >
+          <TouchableOpacity onPress={() => setFullscreen(true)} style={styles.iconBtn}>
             <Ionicons name="expand-outline" size={22} color="#2563EB" />
           </TouchableOpacity>
         </View>
       )}
 
-      <View style={styles.webContainer}>
-        <WebView
-          key={webKey}
-          ref={webRef}
-          originWhitelist={['https://*', 'http://*']}
-          source={{ html, baseUrl: 'https://' + domain + '/' }}
-          style={styles.webview}
-          javaScriptEnabled
-          domStorageEnabled
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          setSupportMultipleWindows={false}
-          startInLoadingState
-          onMessage={handleMessage}
-          onLoadEnd={() => { if (!joined) setLoading(false); }}
-          onError={(e) => {
-            setFailed(true);
-            setErrorMsg('Không tải được phòng học (' +
-              (e?.nativeEvent?.description || 'lỗi mạng') + ').');
-          }}
-          onHttpError={() => {
-            setFailed(true);
-            setErrorMsg('Không kết nối được máy chủ Jitsi. Kiểm tra mạng rồi thử lại.');
-          }}
-          onShouldStartLoadWithRequest={(req) => {
-            if (!req?.url) return false;
-            const url = req.url.toLowerCase();
-            if (url.startsWith('intent://') ||
-                url.startsWith('market://') ||
-                url.startsWith('tel:') ||
-                url.startsWith('sms:') ||
-                url.startsWith('mailto:')) {
-              return false;
-            }
-            return true;
-          }}
-          renderLoading={() => (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.loadingText}>Đang kết nối phòng học...</Text>
-            </View>
-          )}
-        />
+      <View style={styles.videoArea}>
+        {RTCView && remoteStream ? (
+          <RTCView
+            streamURL={remoteStream.toURL()}
+            style={styles.remoteVideo}
+            objectFit="cover"
+            mirror={false}
+          />
+        ) : (
+          <View style={styles.remotePlaceholder}>
+            <Ionicons name="person-outline" size={48} color="#6B7280" />
+            <Text style={styles.placeholderText}>
+              {connStatus === STATUS.connected
+                ? 'Đối phương đã tắt camera'
+                : 'Đang chờ đối phương...'}
+            </Text>
+          </View>
+        )}
+
+        {RTCView && localStream && !camOff ? (
+          <View style={styles.pipBox}>
+            <RTCView
+              streamURL={localStream.toURL()}
+              style={styles.pipVideo}
+              objectFit="cover"
+              mirror={facingRef.current === 'user'}
+              zOrder={1}
+            />
+          </View>
+        ) : (
+          <View style={[styles.pipBox, styles.pipOff]}>
+            <Ionicons name="videocam-off" size={20} color="#9CA3AF" />
+          </View>
+        )}
 
         {loading && !failed && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#2563EB" />
-            <Text style={styles.loadingText}>
-              {joined ? 'Đang vào phòng...' : 'Đang kết nối Jitsi Meet...'}
-            </Text>
+            <Text style={styles.loadingText}>Đang khởi tạo camera/mic...</Text>
           </View>
         )}
 
@@ -337,95 +521,91 @@ export default function ClassroomScreen({ user, session, onBack }) {
               <Ionicons name="refresh" size={16} color="#fff" />
               <Text style={styles.primaryBtnText}>Thử lại</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: '#4B5563' }]}
-              onPress={() => {
-                setDomainIndex(i => (i + 1) % JITSI_DOMAINS.length);
-                retry();
-              }}
-            >
-              <Ionicons name="swap-horizontal" size={16} color="#fff" />
-              <Text style={styles.primaryBtnText}>Đổi máy chủ</Text>
-            </TouchableOpacity>
           </View>
         )}
 
-        {toast && (
-          <View style={styles.toastBox}>
-            <Ionicons name="notifications" size={15} color="#fff" />
-            <Text style={styles.toastText}>{toast}</Text>
+        {fullscreen && (
+          <View style={styles.fsBar}>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={styles.fsText} numberOfLines={1}>
+                Buổi {sessionNumber} · {subject} · {connStatus}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.fsBtn} onPress={() => setFullscreen(false)}>
+              <Ionicons name="contract-outline" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {!fullscreen && (
-        <View style={styles.controlsBar}>
-          <TouchableOpacity
-            style={[styles.ctrlBtn, muted && styles.ctrlBtnActive]}
-            onPress={() => sendCommand('toggleAudio')}
-            disabled={!joined}
-          >
-            <Ionicons
-              name={muted ? 'mic-off' : 'mic'}
-              size={20}
-              color={muted ? '#EF4444' : '#111827'}
-            />
-            <Text style={styles.ctrlText}>{muted ? 'Bật mic' : 'Tắt mic'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.ctrlBtn, camOff && styles.ctrlBtnActive]}
-            onPress={() => sendCommand('toggleVideo')}
-            disabled={!joined}
-          >
-            <Ionicons
-              name={camOff ? 'videocam-off' : 'videocam'}
-              size={20}
-              color={camOff ? '#EF4444' : '#111827'}
-            />
-            <Text style={styles.ctrlText}>{camOff ? 'Bật cam' : 'Tắt cam'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.ctrlBtn}
-            onPress={() => {
-              setDomainIndex(i => (i + 1) % JITSI_DOMAINS.length);
-              retry();
-            }}
-          >
-            <Ionicons name="server-outline" size={18} color="#111827" />
-            <Text style={styles.ctrlText}>Đổi máy chủ</Text>
-          </TouchableOpacity>
-
-          <View style={styles.hintBox}>
-            <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
-            <Text style={styles.hintText}>
-              Chia sẻ màn hình + chat + 2 khung: chạm giữa màn hình để hiện thanh công cụ Jitsi
-            </Text>
-          </View>
-
-          <TouchableOpacity style={styles.leaveBtn} onPress={leaveRoom}>
-            <Ionicons
-              name="call"
-              size={18}
-              color="#fff"
-              style={{ transform: [{ rotate: '135deg' }] }}
-            />
-            <Text style={styles.leaveText}>Rời phòng</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {fullscreen && (
-        <View style={styles.fsBar}>
-          <Text style={styles.fsText} numberOfLines={1}>
-            Buổi {sessionNumber} · {subject}
+      <View style={[styles.controlsBar, fullscreen && styles.controlsBarFs]}>
+        <TouchableOpacity
+          style={[
+            styles.ctrlBtn,
+            fullscreen && styles.ctrlBtnFs,
+            muted && styles.ctrlBtnActive,
+          ]}
+          onPress={toggleMute}
+        >
+          <Ionicons
+            name={muted ? 'mic-off' : 'mic'}
+            size={20}
+            color={muted ? '#EF4444' : fullscreen ? '#fff' : '#111827'}
+          />
+          <Text style={[styles.ctrlText, fullscreen && styles.ctrlTextFs]}>
+            {muted ? 'Bật mic' : 'Tắt mic'}
           </Text>
-          <TouchableOpacity style={styles.fsBtn} onPress={() => setFullscreen(false)}>
-            <Ionicons name="contract-outline" size={20} color="#fff" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.ctrlBtn,
+            fullscreen && styles.ctrlBtnFs,
+            camOff && styles.ctrlBtnActive,
+          ]}
+          onPress={toggleCam}
+        >
+          <Ionicons
+            name={camOff ? 'videocam-off' : 'videocam'}
+            size={20}
+            color={camOff ? '#EF4444' : fullscreen ? '#fff' : '#111827'}
+          />
+          <Text style={[styles.ctrlText, fullscreen && styles.ctrlTextFs]}>
+            {camOff ? 'Bật cam' : 'Tắt cam'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.ctrlBtn, fullscreen && styles.ctrlBtnFs]}
+          onPress={flipCamera}
+          disabled={camOff}
+        >
+          <Ionicons
+            name="camera-reverse-outline"
+            size={20}
+            color={fullscreen ? '#fff' : '#111827'}
+          />
+          <Text style={[styles.ctrlText, fullscreen && styles.ctrlTextFs]}>Đổi cam</Text>
+        </TouchableOpacity>
+
+        {!fullscreen && (
+          <TouchableOpacity style={styles.ctrlBtn} onPress={() => setFullscreen(true)}>
+            <Ionicons name="expand-outline" size={18} color="#111827" />
+            <Text style={styles.ctrlText}>Fullscreen</Text>
           </TouchableOpacity>
-        </View>
-      )}
+        )}
+
+        <TouchableOpacity style={styles.leaveBtn} onPress={leaveRoom}>
+          <Ionicons
+            name="call"
+            size={18}
+            color="#fff"
+            style={{ transform: [{ rotate: '135deg' }] }}
+          />
+          <Text style={styles.leaveText}>Rời phòng</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -433,84 +613,166 @@ export default function ClassroomScreen({ user, session, onBack }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+  },
   headerInfo: { flex: 1, marginLeft: 4 },
   headerTitle: { fontSize: 15, fontWeight: '700', color: '#111' },
   headerSub: { fontSize: 12, color: '#6B7280', marginTop: 1 },
-  webContainer: { flex: 1, backgroundColor: '#000' },
-  webview: { flex: 1, backgroundColor: '#000' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  videoArea: { flex: 1, backgroundColor: '#0B1220', position: 'relative' },
+  remoteVideo: { flex: 1, backgroundColor: '#000' },
+  remotePlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  placeholderText: { color: '#9CA3AF', fontSize: 14 },
+  pipBox: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 110,
+    height: 160,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: '#111827',
+    zIndex: 5,
+  },
+  pipVideo: { width: '100%', height: '100%' },
+  pipOff: { alignItems: 'center', justifyContent: 'center' },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0B1220',
-    alignItems: 'center', justifyContent: 'center',
-    zIndex: 10, paddingHorizontal: 32,
+    backgroundColor: 'rgba(11,18,32,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    paddingHorizontal: 32,
   },
   loadingText: { marginTop: 14, fontSize: 14, color: '#9CA3AF' },
   errIconBox: {
-    width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(239,68,68,0.12)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
   errTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
-  errDesc: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', marginTop: 8, lineHeight: 19 },
+  errDesc: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 19,
+  },
   primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#2563EB', paddingHorizontal: 22, paddingVertical: 12,
-    borderRadius: 12, marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 18,
   },
   primaryBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   centerBox: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#F9FAFB', paddingHorizontal: 32,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 32,
   },
   lockIconBox: {
-    width: 88, height: 88, borderRadius: 44, backgroundColor: '#FEE2E2',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 20,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   blockTitle: { fontSize: 18, fontWeight: '800', color: '#111', textAlign: 'center' },
   blockDesc: {
-    fontSize: 14, color: '#6B7280', textAlign: 'center',
-    marginTop: 10, lineHeight: 21,
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 21,
   },
-  toastBox: {
-    position: 'absolute', top: 12, alignSelf: 'center',
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(16,185,129,0.95)',
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22,
-    marginHorizontal: 24, zIndex: 30,
-  },
-  toastText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   controlsBar: {
-    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
-    justifyContent: 'center', gap: 10,
-    paddingHorizontal: 12, paddingVertical: 12,
-    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  controlsBarFs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(17,24,39,0.88)',
+    borderTopWidth: 0,
+    zIndex: 20,
   },
   ctrlBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 10,
-    borderRadius: 22, backgroundColor: '#F3F4F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: '#F3F4F6',
   },
+  ctrlBtnFs: { backgroundColor: 'rgba(255,255,255,0.12)' },
   ctrlBtnActive: { backgroundColor: '#FEF2F2' },
   ctrlText: { fontSize: 13, fontWeight: '600', color: '#111827' },
-  hintBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    maxWidth: 180,
-  },
-  hintText: { fontSize: 11, color: '#9CA3AF', flexShrink: 1, lineHeight: 15 },
+  ctrlTextFs: { color: '#fff' },
   leaveBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#EF4444', paddingHorizontal: 16, paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 22,
   },
   leaveText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   fsBar: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: 'rgba(17,24,39,0.85)', paddingHorizontal: 12, paddingVertical: 8,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(17,24,39,0.85)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     zIndex: 20,
   },
   fsText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600', marginRight: 8 },
