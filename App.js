@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, AppState } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, AppState, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -33,12 +33,20 @@ if (!isExpoGo) {
 }
 
 export default function App() {
-  return (
+  const inner = (
     <ErrorCatcher>
       <SafeAreaProvider>
         <AppInner />
       </SafeAreaProvider>
     </ErrorCatcher>
+  );
+  // Bản web/desktop: đặt app trong khung tối đa 1280px canh giữa trên nền xám,
+  // tránh giao diện bị kéo giãn hết bề ngang màn hình lớn. Mobile giữ nguyên.
+  if (Platform.OS !== 'web') return inner;
+  return (
+    <View style={styles.webBackdrop}>
+      <View style={styles.webFrame}>{inner}</View>
+    </View>
   );
 }
 
@@ -171,6 +179,11 @@ function AppInner() {
 }
 
 const styles = StyleSheet.create({
+  webBackdrop: { flex: 1, backgroundColor: '#E5E7EB', alignItems: 'center' },
+  webFrame: {
+    flex: 1, width: '100%', maxWidth: 1280, backgroundColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.12, shadowRadius: 24,
+  },
   splashContainer: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   logo: { fontSize: 80 },
   appName: { fontSize: 32, fontWeight: 'bold', color: '#2563EB', marginTop: 10 },

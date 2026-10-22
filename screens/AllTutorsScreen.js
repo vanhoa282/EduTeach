@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { getTutors } from '../lib/auth';
+import { useGridColumns, gridCardWidth, gridWrapStyle } from '../lib/responsive';
 
 const categories = [
   { id: 'all', name: 'Tất cả' },
@@ -39,6 +40,7 @@ const EXP_RANGES = [
 ];
 
 export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCategory, initialSearch }) {
+  const cols = useGridColumns();
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -216,10 +218,11 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
             <Text style={styles.emptyTitle}>Không tìm thấy gia sư</Text>
           </View>
         ) : (
-          filtered.map(tutor => (
+          <View style={gridWrapStyle}>
+          {filtered.map(tutor => (
             <TouchableOpacity
               key={tutor.id}
-              style={styles.tutorCard}
+              style={[styles.tutorCard, gridCardWidth(cols)]}
               onPress={() => onSelectTutor(tutor)}
             >
               <Image source={{ uri: tutor.avatar }} style={styles.tutorAvatar} />
@@ -239,7 +242,8 @@ export default function AllTutorsScreen({ user, onBack, onSelectTutor, initialCa
                 <Text style={styles.tutorPriceUnit}>/buổi</Text>
               </View>
             </TouchableOpacity>
-          ))
+          ))}
+          </View>
         )}
         <View style={{ height: 20 }} />
       </ScrollView>

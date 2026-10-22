@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { getTutors } from '../lib/auth';
+import { useGridColumns, gridCardWidth, gridWrapStyle } from '../lib/responsive';
 import AnnouncementBanner from '../components/AnnouncementBanner';
 import { TutorCardSkeleton } from '../components/Skeleton';
 import { FadeInView } from '../components/Animated';
@@ -19,6 +20,7 @@ const categories = [
 ];
 
 export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
+  const cols = useGridColumns();
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -159,8 +161,9 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
             </Text>
           </View>
         ) : (
-          filteredTutors.slice(0, 5).map((tutor, index) => (
-            <FadeInView key={tutor.id} delay={index * 80}>
+          <View style={gridWrapStyle}>
+          {filteredTutors.slice(0, 5).map((tutor, index) => (
+            <FadeInView key={tutor.id} delay={index * 80} style={gridCardWidth(cols)}>
             <TouchableOpacity
               style={styles.tutorCard}
               activeOpacity={0.75}
@@ -184,7 +187,8 @@ export default function HomeScreen({ user, onSelectTutor, onOpenAllTutors }) {
               </View>
             </TouchableOpacity>
             </FadeInView>
-          ))
+          ))}
+          </View>
         )}
 
         {filteredTutors.length > 5 && (

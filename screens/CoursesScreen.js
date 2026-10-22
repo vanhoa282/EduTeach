@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { CourseCardSkeleton } from '../components/Skeleton';
+import { useGridColumns, gridCardWidth, gridWrapStyle } from '../lib/responsive';
 
 const STATUS_CFG = {
   pending_payment: { label: 'Chờ thanh toán', color: '#F59E0B', bg: '#FFFBEB', icon: 'time-outline' },
@@ -14,6 +15,7 @@ const STATUS_CFG = {
 };
 
 export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
+  const cols = useGridColumns();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,13 +86,14 @@ export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
         <Text style={styles.title}>Khóa học của tôi</Text>
         <Text style={styles.subtitle}>{courses.length} khóa học đã đăng ký</Text>
 
+        <View style={gridWrapStyle}>
         {courses.map(course => {
           const cfg = STATUS_CFG[course.status] || STATUS_CFG.pending_payment;
           const tutorName = course.tutor?.full_name || 'Gia sư';
           return (
             <TouchableOpacity
               key={course.id}
-              style={styles.courseCard}
+              style={[styles.courseCard, gridCardWidth(cols)]}
               onPress={() => onSelectCourse(course.id)}
               activeOpacity={0.75}
             >
@@ -136,6 +139,7 @@ export default function CoursesScreen({ user, onFindTutor, onSelectCourse }) {
             </TouchableOpacity>
           );
         })}
+        </View>
 
         <View style={{ height: 20 }} />
       </ScrollView>
