@@ -49,11 +49,13 @@ assert.equal(
   'signaling:session:abc-123'
 );
 
-// ICE mặc định: chỉ STUN (chưa cấu hình TURN).
+// ICE mặc định: STUN + TURN (TURN_CONFIG đã cấu hình Metered 2026-10-22).
 assert.equal(Array.isArray(ICE_SERVERS), true);
-assert.equal(ICE_SERVERS.length, 1);
+assert.equal(ICE_SERVERS.length, 2);
 assert.equal(typeof ICE_SERVERS[0].urls[0], 'string');
-assert.equal(hasTurnRelay(), false);
+assert.equal(hasTurnRelay(), true);
+// Chưa cấu hình TURN (config rỗng) → chỉ STUN.
+assert.equal(buildIceServers({ urls: [], username: '', credential: '' }).length, 1);
 
 // Có TURN_CONFIG hợp lệ → thêm 1 entry TURN, hasTurnRelay() = true.
 const withTurn = buildIceServers({
