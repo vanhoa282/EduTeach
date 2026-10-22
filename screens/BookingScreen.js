@@ -24,7 +24,7 @@ const SESSION_OPTIONS = [
 
 export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
   const [sessions, setSessions] = useState(10);
-  const [paymentType, setPaymentType] = useState('full');
+  // Thanh toán 100% một lần (đã bỏ tuỳ chọn trả 50% — 2026-10-22).
   const [tutorSlots, setTutorSlots] = useState(null);
   const [freeSlots, setFreeSlots] = useState([]);
   const [selectedSlots, setSelectedSlots] = useState([]);
@@ -38,8 +38,7 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
   const baseTotal = tutor.price * sessions;
   const discount = Math.round(baseTotal * (option.discount / 100));
   const total = baseTotal - discount;
-  const payNow = paymentType === 'full' ? total : Math.round(total / 2);
-  const payLater = paymentType === 'half' ? total - payNow : 0;
+  const payNow = total;
 
   useEffect(() => {
     let mounted = true;
@@ -173,15 +172,14 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
         sessions,
         total,
         payNow,
-        payLater,
-        paymentType,
+        paymentType: 'full',
         schedule,
         slots: validated,
       };
 
       Alert.alert(
         'Xác nhận đăng ký',
-        `Bạn đăng ký ${sessions} buổi với ${tutor.name}\nLịch: ${schedule}\nThanh toán: ${payNow.toLocaleString('vi-VN')}đ${paymentType === 'half' ? `\nCòn lại: ${payLater.toLocaleString('vi-VN')}đ` : ''}\n\nHệ thống sẽ giữ chỗ 30 phút khi tạo mã đơn.`,
+        `Bạn đăng ký ${sessions} buổi với ${tutor.name}\nLịch: ${schedule}\nThanh toán: ${payNow.toLocaleString('vi-VN')}đ\n\nHệ thống sẽ giữ chỗ 30 phút khi tạo mã đơn.`,
         [
           { text: 'Huỷ', style: 'cancel' },
           { text: 'Xác nhận', onPress: () => onSuccess(booking) },
@@ -363,35 +361,16 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
         )}
 
         <Text style={styles.sectionTitle}>Phương thức thanh toán</Text>
-        <TouchableOpacity
-          style={[styles.payCard, paymentType === 'full' && styles.payCardActive]}
-          onPress={() => setPaymentType('full')}
-          activeOpacity={0.7}
-        >
+        <View style={[styles.payCard, styles.payCardActive]}>
           <View style={styles.radioOuter}>
-            {paymentType === 'full' && <View style={styles.radioInner} />}
+            <View style={styles.radioInner} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.payTitle}>Trả 100%</Text>
             <Text style={styles.payDesc}>Thanh toán toàn bộ khóa học ngay</Text>
           </View>
-          <Ionicons name="checkmark-circle" size={22} color={paymentType === 'full' ? '#2563EB' : '#E5E7EB'} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.payCard, paymentType === 'half' && styles.payCardActive]}
-          onPress={() => setPaymentType('half')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.radioOuter}>
-            {paymentType === 'half' && <View style={styles.radioInner} />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.payTitle}>Trả 50% trước</Text>
-            <Text style={styles.payDesc}>Trả 50% còn lại khi kết thúc khóa</Text>
-          </View>
-          <Ionicons name="checkmark-circle" size={22} color={paymentType === 'half' ? '#2563EB' : '#E5E7EB'} />
-        </TouchableOpacity>
+          <Ionicons name="checkmark-circle" size={22} color="#2563EB" />
+        </View>
 
         <View style={styles.summary}>
           <Text style={styles.summaryTitle}>Tổng kết</Text>
@@ -420,12 +399,7 @@ export default function BookingScreen({ user, tutor, onBack, onSuccess }) {
               {payNow.toLocaleString('vi-VN')}đ
             </Text>
           </View>
-          {payLater > 0 && (
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Còn lại cuối khóa</Text>
-              <Text style={styles.summaryValue}>{payLater.toLocaleString('vi-VN')}đ</Text>
-            </View>
-          )}
+
         </View>
 
         <View style={{ height: 120 }} />

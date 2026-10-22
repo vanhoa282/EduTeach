@@ -3,16 +3,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 const CONTACTS = [
-  { icon: 'call', label: 'Hotline', value: '1900 1234', color: '#2563EB', action: 'tel:19001234' },
-  { icon: 'logo-whatsapp', label: 'Zalo', value: '0901 234 567', color: '#10B981', action: 'https://zalo.me/0901234567' },
-  { icon: 'mail', label: 'Email', value: 'support@eduteach.vn', color: '#EF4444', action: 'mailto:support@eduteach.vn' },
-  { icon: 'globe', label: 'Website', value: 'eduteach.vn', color: '#8B5CF6', action: 'https://eduteach.vn' },
+  { icon: 'call', label: 'Hotline', value: '0325 272 884', color: '#2563EB', action: 'tel:0325272884' },
+  { icon: 'logo-whatsapp', label: 'Zalo', value: '0325 272 884', color: '#10B981', action: 'https://zalo.me/0325272884' },
+  { icon: 'mail', label: 'Email', value: 'eduteach@gmail.com', color: '#EF4444', action: 'mailto:eduteach@gmail.com' },
 ];
 
 const FAQS = [
   { q: 'Làm sao để đăng ký khóa học?', a: 'Vào Trang chủ, chọn gia sư, bấm "Đăng ký học", chọn số buổi và thanh toán.' },
   { q: 'Thanh toán như thế nào?', a: 'Chuyển khoản ACB theo mã đơn EDTxxxxxx, sau đó upload bill để admin duyệt.' },
-  { q: 'Khi nào được hoàn tiền?', a: 'Hoàn tiền khi admin xác nhận có tranh chấp. Số tiền = 50% - (số buổi đã dạy × giá buổi).' },
+  { q: 'Khi nào được hoàn tiền?', a: 'Hoàn tiền khi admin xác nhận có tranh chấp. Số tiền hoàn = số tiền đã thanh toán trừ giá trị các buổi đã học.' },
   { q: 'Gia sư không dạy được thì sao?', a: 'Nhấn "Khiếu nại" trên buổi học đó. Admin sẽ xử lý trong 24h.' },
 ];
 

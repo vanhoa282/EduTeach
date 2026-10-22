@@ -1,10 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import ErrorCatcher from './components/ErrorCatcher';
+import { setDeepLinkHandler, enqueueDeepLink, normalizeNotifData, clearDeepLinkQueue } from './lib/deepLink';
 import AuthScreen from './screens/AuthScreen';
 import ModernSplash from './components/ModernSplash';
 import MainTabs from './screens/MainTabs';
@@ -44,8 +45,45 @@ export default function App() {
 function AppInner() {
   const [screen, setScreen] = useState('splash');
   const [user, setUser] = useState(null);
+  const [pendingDeepLink, setPendingDeepLink] = useState(null);
   const notifListener = useRef(null);
   const responseListener = useRef(null);
+
+  // App.js chỉ có screen/user — chi tiết course/chat nằm trong MainTabs/TutorMainTabs
+  // nên handler lưu pendingDeepLink và đưa về 'main' để Tabs consume.
+  useEffect(() => {
+    setDeepLinkHandler((data) => {
+      if (!data || !data.type) return;
+      setPendingDeepLink(data);
+      setScreen('main');
+    });
+    return () => clearDeepLinkQueue();
+  }, []);
+
+  // Background -> foreground: nếu có deep-link queued, flush khi active
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') {
+        // handler đã set ở trên sẽ tự flush queue
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Killed: cold start do tap notification — getLastNotificationResponseAsync
+  useEffect(() => {
+    if (isExpoGo || !Notifications) return;
+    (async () => {
+      try {
+        const last = await Notifications.getLastNotificationResponseAsync();
+        const raw = last?.notification?.request?.content?.data;
+        if (raw) {
+          const data = normalizeNotifData(raw);
+          if (data) enqueueDeepLink(data);
+        }
+      } catch (e) {}
+    })();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +129,10 @@ function AppInner() {
 
     try {
       notifListener.current = Notifications.addNotificationReceivedListener(() => {});
-      responseListener.current = Notifications.addNotificationResponseReceivedListener(() => {});
+      responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = normalizeNotifData(response.notification.request.content.data);
+        if (data) enqueueDeepLink(data);
+      });
     } catch (e) {}
 
     return () => {
@@ -110,6 +151,8 @@ function AppInner() {
   };
 
   const handleLogout = async () => {
+    clearDeepLinkQueue();
+    setPendingDeepLink(null);
     setUser(null);
     setScreen('auth');
     try {
@@ -123,8 +166,8 @@ function AppInner() {
   }
 
   if (!user) return <AuthScreen onLogin={handleLogin} />;
-  if (user.role === 'tutor') return <TutorMainTabs user={user} onLogout={handleLogout} />;
-  return <MainTabs user={user} onLogout={handleLogout} />;
+  if (user.role === 'tutor') return <TutorMainTabs user={user} onLogout={handleLogout} pendingDeepLink={pendingDeepLink} onDeepLinkConsumed={() => setPendingDeepLink(null)} />;
+  return <MainTabs user={user} onLogout={handleLogout} pendingDeepLink={pendingDeepLink} onDeepLinkConsumed={() => setPendingDeepLink(null)} />;
 }
 
 const styles = StyleSheet.create({

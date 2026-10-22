@@ -108,7 +108,7 @@ Deno.serve(async req => {
       body.subject.length > 150 ||
       !Array.isArray(body?.slots) ||
       ![10, 20, 30].includes(body.slots.length) ||
-      !['full', 'half'].includes(body?.payment_type)
+      body?.payment_type !== 'full'
     ) {
       return respond({
         error: 'Dữ liệu đặt lịch không hợp lệ',

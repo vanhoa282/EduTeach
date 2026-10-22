@@ -28,7 +28,7 @@ import { getOrCreateConversation, getUnreadCount } from '../lib/chat';
 import { getNotifUnreadCount } from '../lib/notif';
 import { supabase } from '../lib/supabase';
 
-export default function MainTabs({ user: initialUser, onLogout }) {
+export default function MainTabs({ user: initialUser, onLogout, pendingDeepLink, onDeepLinkConsumed }) {
   const [user, setUser] = useState(initialUser);
   const [activeTab, setActiveTab] = useState('home');
   const [selectedTutor, setSelectedTutor] = useState(null);
@@ -75,6 +75,67 @@ export default function MainTabs({ user: initialUser, onLogout }) {
       sub.remove();
     };
   }, [user?.id]);
+
+  // Deep-link từ push — phải mở ĐÚNG màn hình, đúng item.
+  // Thứ tự: setActiveTab + setSelectedCourseId/setActiveConv TRƯỚC onDeepLinkConsumed.
+  useEffect(() => {
+    if (!pendingDeepLink || !onDeepLinkConsumed) return;
+    const d = pendingDeepLink;
+
+    // Reset overlay layer để deep-link không bị che bởi detail screen cũ
+    const resetOverlays = () => {
+      setProfileScreen(null);
+      setShowAdmin(false);
+      setAllTutorsFilter(null);
+      setSelectedTutor(null);
+      setBookingTutor(null);
+      setPaymentInfo(null);
+      setSelectedNotif(null);
+      // Không reset activeConv/selectedCourseId/activeSession — chính là target
+    };
+
+    if (d.type === 'session_reminder' && d.courseId) {
+      resetOverlays();
+      // Đặt tab trước, course sau — đảm bảo render đúng Courses tab + detail
+      setActiveTab('courses');
+      setSelectedCourseId(d.courseId);
+      // Đảm bảo pendingDeepLink clear sau khi state đã apply (1 tick)
+      setTimeout(() => onDeepLinkConsumed(), 0);
+      return;
+    }
+
+    if (d.type === 'message' && d.conversationId) {
+      resetOverlays();
+      // Student tab chat là 'messages' — cần set tab trước để ChatList mount
+      setActiveTab('messages');
+      (async () => {
+        try {
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)')
+            .eq('id', d.conversationId)
+            .maybeSingle();
+          if (conv) setActiveConv(conv);
+          else setActiveConv({ id: d.conversationId });
+        } catch (e) {
+          setActiveConv({ id: d.conversationId });
+        }
+        setTimeout(() => onDeepLinkConsumed(), 0);
+      })();
+      return;
+    }
+
+    if (d.type === 'order' && d.orderId) {
+      resetOverlays();
+      setActiveTab('courses');
+      setSelectedCourseId(d.courseId || d.orderId);
+      setTimeout(() => onDeepLinkConsumed(), 0);
+      return;
+    }
+
+    // Fallback: unknown type
+    setTimeout(() => onDeepLinkConsumed(), 0);
+  }, [pendingDeepLink]);
 
   if (profileScreen === 'wishlist') {
     return <WishlistScreen user={user} onBack={() => setProfileScreen(null)} onSelectTutor={(t) => { setProfileScreen(null); setSelectedTutor(t); }} />;

@@ -54,24 +54,24 @@ function convertLatex(text) {
 function convertTables(text) {
   if (!text) return text;
   const lines = text.split('\n');
-  const out: string[] = [];
+  const out = [];
   let i = 0;
 
   while (i < lines.length) {
     const line = lines[i];
     // Detect table: line có >= 2 dấu | và dòng tiếp theo là separator (---)
-    const isTableRow = (l: string) => (l.match(/\|/g) || []).length >= 2;
-    const isSeparator = (l: string) => /^\s*\|?[\s:|-]+\|[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+    const isTableRow = (l) => (l.match(/\|/g) || []).length >= 2;
+    const isSeparator = (l) => /^\s*\|?[\s:|-]+\|[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
 
     if (isTableRow(line) && i + 1 < lines.length && isSeparator(lines[i + 1])) {
       // Parse header
-      const parseRow = (l: string) =>
+      const parseRow = (l) =>
         l.split('|').map(c => c.trim()).filter(c => c.length > 0);
       const headers = parseRow(line);
       i += 2; // skip header + separator
 
       // Collect rows
-      const rows: string[][] = [];
+      const rows = [];
       while (i < lines.length && isTableRow(lines[i]) && !isSeparator(lines[i])) {
         rows.push(parseRow(lines[i]));
         i++;

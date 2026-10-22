@@ -17,7 +17,8 @@
           "backgroundColor": "#2563EB"
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "./plugins/expo-foreground-actions"
     ],
     "ios": {
       "supportsTablet": true,
@@ -33,7 +34,12 @@
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_CAMERA",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK"
       ]
     },
     "web": {

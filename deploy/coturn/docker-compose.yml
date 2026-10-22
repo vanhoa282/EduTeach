@@ -1,0 +1,18 @@
+# =============================================================================
+# EduTeach — TURN server (coturn) cho phòng học WebRTC native
+# Chạy trên VPS (có thể dùng CHUNG VPS với Jitsi nếu đã self-host):
+#   cp .env.example .env  →  sửa .env  →  docker compose up -d
+# Mở firewall: 3478 (udp+tcp), 5349 (tcp, TURN/TLS), 49152-65535 (udp, relay)
+# =============================================================================
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host   # coturn cần dải port relay rộng — host network là cách chuẩn
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./certs:/etc/coturn/certs:ro
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    command: -c /etc/coturn/turnserver.conf

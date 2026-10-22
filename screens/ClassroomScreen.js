@@ -6,6 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   NativeModules,
+  Platform,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,8 +20,14 @@ import {
   newOfferId,
   nextReconnectDelay,
   MAX_RECONNECT_ATTEMPTS,
+  getJoinWindow,
 } from '../lib/webrtc/session';
 import { subscribeSignaling, sendSignal, clearSignals } from '../lib/webrtc/signaling';
+import {
+  startClassroomForeground,
+  updateClassroomForeground,
+  stopClassroomForeground,
+} from '../lib/classroomForeground';
 
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
 const hasWebRTC = !!NativeModules.WebRTCModule;
@@ -56,16 +65,30 @@ export default function ClassroomScreen({ user, session, onBack }) {
   const [connStatus, setConnStatus] = useState(STATUS.connecting);
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
+  const [sharingScreen, setSharingScreen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [retryKey, setRetryKey] = useState(0);
+  // Chat trong phòng (data channel — peer đã có sẵn, nay bổ sung UI)
+  const [showChat, setShowChat] = useState(false);
+  const [chatText, setChatText] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
+  const chatScrollRef = useRef(null);
 
   const allowed = useMemo(() => isParticipant(user, session), [user?.id, session]);
+  // Phòng học tự kiểm tra cửa sổ giờ (mở -15', đóng +30' sau buổi) ngay tại
+  // đây, không chỉ dựa vào màn hình danh sách (bổ sung 2026-10-22).
+  const joinWin = useMemo(() => getJoinWindow(session), [session]);
   const offerer = useMemo(() => isOfferer(user), [user?.role]);
   const sessionId = session?.id;
   const sessionNumber = session?.session_number || '?';
   const subject = session?.course?.subject || session?.subject || 'Lớp học trực tuyến';
+
+  // Foreground service: giữ WebRTC sống khi app xuống background (Android)
+  const durationRef = useRef(0);
+  const durationTimerRef = useRef(null);
+  const fgStartedRef = useRef(false);
 
   const cleanup = useCallback(async ({ notifyLeave = false } = {}) => {
     if (offerTimerRef.current) {
@@ -75,6 +98,15 @@ export default function ClassroomScreen({ user, session, onBack }) {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
+    }
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    // Dừng foreground service ngay khi rời phòng — tránh notification kẹt lại
+    if (fgStartedRef.current) {
+      fgStartedRef.current = false;
+      try { await stopClassroomForeground(); } catch (e) {}
     }
     if (subRef.current) {
       try { subRef.current.unsubscribe(); } catch (e) {}
@@ -123,11 +155,47 @@ export default function ClassroomScreen({ user, session, onBack }) {
     }, delay);
   }, [offerer]);
 
+  const stopShareThenReconnect = useCallback(() => {
+    const peer = peerRef.current;
+    if (peer?.sharingScreen || peer?.screenStream) {
+      peer
+        .stopScreenShare(facingRef.current)
+        .then((stream) => {
+          if (!mountedRef.current) return;
+          setSharingScreen(false);
+          if (stream) setLocalStream(stream);
+          scheduleReconnect();
+        })
+        .catch(() => {
+          if (!mountedRef.current) return;
+          setSharingScreen(false);
+          scheduleReconnect();
+        });
+      return;
+    }
+    scheduleReconnect();
+  }, [scheduleReconnect]);
+
   const handlePeerEvent = useCallback((event) => {
     if (!mountedRef.current || !event) return;
 
     if (event.type === 'remotestream' && event.stream) {
       setRemoteStream(event.stream);
+    }
+
+    if (event.type === 'chatmessage' && event.message?.text) {
+      setChatMessages((prev) => [
+        ...prev.slice(-80),
+        { from: 'remote', text: event.message.text, at: event.message.at || Date.now() },
+      ]);
+    }
+
+    if (event.type === 'screenshare') {
+      setSharingScreen(!!event.active);
+      if (event.stream) setLocalStream(event.stream);
+      else if (!event.active && peerRef.current?.localStream) {
+        setLocalStream(peerRef.current.localStream);
+      }
     }
 
     if (event.type === 'connectionstate') {
@@ -146,7 +214,7 @@ export default function ClassroomScreen({ user, session, onBack }) {
         setConnStatus(STATUS.connecting);
       } else if (state === 'disconnected' || state === 'failed') {
         setConnStatus(STATUS.disconnected);
-        scheduleReconnect();
+        stopShareThenReconnect();
       } else if (state === 'closed') {
         setConnStatus(STATUS.disconnected);
       }
@@ -165,10 +233,10 @@ export default function ClassroomScreen({ user, session, onBack }) {
         setLoading(false);
       } else if (state === 'disconnected' || state === 'failed') {
         setConnStatus(STATUS.disconnected);
-        scheduleReconnect();
+        stopShareThenReconnect();
       }
     }
-  }, [scheduleReconnect]);
+  }, [stopShareThenReconnect]);
 
   const startOfferLoop = useCallback(() => {
     if (offerTimerRef.current) clearInterval(offerTimerRef.current);
@@ -237,7 +305,7 @@ export default function ClassroomScreen({ user, session, onBack }) {
     mountedRef.current = true;
 
     if (isExpoGo || !hasWebRTC) return undefined;
-    if (!allowed || !sessionId || !user?.id) return undefined;
+    if (!allowed || !joinWin.open || !sessionId || !user?.id) return undefined;
 
     let cancelled = false;
 
@@ -247,6 +315,7 @@ export default function ClassroomScreen({ user, session, onBack }) {
       setErrorMsg('');
       setConnStatus(STATUS.connecting);
       setRemoteStream(null);
+      setSharingScreen(false);
       reconnectAttemptRef.current = 0;
 
       try {
@@ -284,6 +353,32 @@ export default function ClassroomScreen({ user, session, onBack }) {
           startOfferLoop();
         }
 
+        // Khởi foreground service (Android) để call còn sống khi xuống background
+        if (Platform.OS === 'android' && !isExpoGo && !cancelled && mountedRef.current) {
+          try {
+            await startClassroomForeground({
+              sessionId, subject,
+              durationSec: 0, muted: false, camOff: false, sharingScreen: false,
+            });
+            fgStartedRef.current = true;
+            durationRef.current = 0;
+            if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+            durationTimerRef.current = setInterval(() => {
+              durationRef.current += 1;
+              updateClassroomForeground({
+                sessionId, subject,
+                durationSec: durationRef.current,
+                muted,
+                camOff,
+                sharingScreen,
+              }).catch(() => {});
+            }, 5000);
+            // Cập nhật ngay khi mic/cam/screen đổi
+          } catch (e) {
+            console.log('[ClassroomFG] start failed:', e?.message);
+          }
+        }
+
         if (mountedRef.current) setLoading(false);
       } catch (e) {
         if (cancelled || !mountedRef.current) return;
@@ -319,6 +414,9 @@ export default function ClassroomScreen({ user, session, onBack }) {
       t.enabled = !next;
     }
     setMuted(next);
+    if (fgStartedRef.current) {
+      updateClassroomForeground({ sessionId, subject, durationSec: durationRef.current, muted: next, camOff, sharingScreen }).catch(() => {});
+    }
   };
 
   const toggleCam = () => {
@@ -330,11 +428,14 @@ export default function ClassroomScreen({ user, session, onBack }) {
       t.enabled = !next;
     }
     setCamOff(next);
+    if (fgStartedRef.current) {
+      updateClassroomForeground({ sessionId, subject, durationSec: durationRef.current, muted, camOff: next, sharingScreen }).catch(() => {});
+    }
   };
 
   const flipCamera = async () => {
     const peer = peerRef.current;
-    if (!peer || peer.closed || camOff) return;
+    if (!peer || peer.closed || camOff || peer.sharingScreen) return;
     const nextFacing = facingRef.current === 'user' ? 'environment' : 'user';
     try {
       const camStream = await peer.getCameraStream(nextFacing);
@@ -348,14 +449,10 @@ export default function ClassroomScreen({ user, session, onBack }) {
         try { oldTrack.stop(); } catch (e) {}
       }
 
-      const sender = peer.pc?.getSenders?.()?.find((s) => s.track && s.track.kind === 'video');
-      if (sender) {
-        await sender.replaceTrack(newTrack);
-      }
+      await peer.replaceVideoTrack(newTrack);
 
       facingRef.current = nextFacing;
       setLocalStream(peer.localStream);
-      // Dọn audio-less stream container (track đã chuyển sang localStream)
       for (const t of camStream.getTracks()) {
         if (t !== newTrack) {
           try { t.stop(); } catch (e) {}
@@ -363,6 +460,45 @@ export default function ClassroomScreen({ user, session, onBack }) {
       }
     } catch (e) {
       setErrorMsg(e?.message || 'Không đổi được camera.');
+    }
+  };
+
+  const sendChatMessage = () => {
+    const text = chatText.trim();
+    if (!text) return;
+    const peer = peerRef.current;
+    if (peer && peer.sendChat(text)) {
+      setChatMessages((prev) => [...prev.slice(-80), { from: 'me', text, at: Date.now() }]);
+      setChatText('');
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    const peer = peerRef.current;
+    if (!peer || peer.closed || Platform.OS !== 'android') return;
+    try {
+      if (peer.sharingScreen) {
+        const stream = await peer.stopScreenShare(facingRef.current);
+        setSharingScreen(false);
+        setCamOff(false);
+        if (stream) setLocalStream(stream);
+      } else {
+        const stream = await peer.startScreenShare();
+        setSharingScreen(true);
+        setCamOff(false);
+        if (stream) setLocalStream(stream);
+      }
+      if (fgStartedRef.current) {
+        const active = !!peerRef.current?.sharingScreen;
+        updateClassroomForeground({ sessionId, subject, durationSec: durationRef.current, muted, camOff: false, sharingScreen: active }).catch(() => {});
+      }
+    } catch (e) {
+      setSharingScreen(!!peerRef.current?.sharingScreen);
+      setErrorMsg(e?.message || 'Không chia sẻ được màn hình.');
+      if (fgStartedRef.current) {
+        updateClassroomForeground({ sessionId, subject, durationSec: durationRef.current, muted, camOff, sharingScreen: !!peerRef.current?.sharingScreen }).catch(() => {});
+      }
     }
   };
 
@@ -376,9 +512,24 @@ export default function ClassroomScreen({ user, session, onBack }) {
   };
 
   const leaveRoom = async () => {
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    if (fgStartedRef.current) {
+      fgStartedRef.current = false;
+      try { await stopClassroomForeground(); } catch (e) {}
+    }
     await cleanup({ notifyLeave: true });
     onBack();
   };
+
+  // Đồng bộ foreground notification khi duration/mic/cam/screen đổi ngoài toggle (vd. reconnect)
+  useEffect(() => {
+    if (!fgStartedRef.current) return;
+    updateClassroomForeground({ sessionId, subject, durationSec: durationRef.current, muted, camOff, sharingScreen }).catch(() => {});
+  }, [muted, camOff, sharingScreen, sessionId, subject]);
+
 
   // ── Expo Go / thiếu native module ──────────────────────────────────────
   if (isExpoGo || !hasWebRTC) {
@@ -409,8 +560,9 @@ export default function ClassroomScreen({ user, session, onBack }) {
     );
   }
 
-  // ── Chặn người lạ ──────────────────────────────────────────────────────
-  if (!allowed) {
+  // ── Chặn người lạ + chặn ngoài giờ học ─────────────────────────────────
+  if (!allowed || !joinWin.open) {
+    const blockedByTime = allowed && !joinWin.open;
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -422,11 +574,15 @@ export default function ClassroomScreen({ user, session, onBack }) {
         </View>
         <View style={styles.centerBox}>
           <View style={styles.lockIconBox}>
-            <Ionicons name="lock-closed" size={40} color="#EF4444" />
+            <Ionicons name={blockedByTime ? 'time-outline' : 'lock-closed'} size={40} color="#EF4444" />
           </View>
-          <Text style={styles.blockTitle}>Bạn không thuộc buổi học này</Text>
+          <Text style={styles.blockTitle}>
+            {blockedByTime ? 'Chưa tới giờ vào lớp' : 'Bạn không thuộc buổi học này'}
+          </Text>
           <Text style={styles.blockDesc}>
-            Phòng học chỉ dành cho học sinh và gia sư của buổi học.
+            {blockedByTime
+              ? joinWin.hint
+              : 'Phòng học chỉ dành cho học sinh và gia sư của buổi học.'}
           </Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={onBack}>
             <Text style={styles.primaryBtnText}>Quay lại</Text>
@@ -492,14 +648,21 @@ export default function ClassroomScreen({ user, session, onBack }) {
             <RTCView
               streamURL={localStream.toURL()}
               style={styles.pipVideo}
-              objectFit="cover"
-              mirror={facingRef.current === 'user'}
+              objectFit={sharingScreen ? 'contain' : 'cover'}
+              mirror={!sharingScreen && facingRef.current === 'user'}
               zOrder={1}
             />
           </View>
         ) : (
           <View style={[styles.pipBox, styles.pipOff]}>
             <Ionicons name="videocam-off" size={20} color="#9CA3AF" />
+          </View>
+        )}
+
+        {sharingScreen && (
+          <View style={styles.shareBadge}>
+            <Ionicons name="desktop-outline" size={14} color="#fff" />
+            <Text style={styles.shareBadgeText}>Đang chia sẻ màn hình</Text>
           </View>
         )}
 
@@ -538,6 +701,45 @@ export default function ClassroomScreen({ user, session, onBack }) {
           </View>
         )}
       </View>
+
+      {showChat && !fullscreen && (
+        <View style={styles.chatPanel}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatTitle}>Chat trong phòng</Text>
+            <TouchableOpacity onPress={() => setShowChat(false)}>
+              <Ionicons name="close" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            ref={chatScrollRef}
+            style={styles.chatList}
+            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: false })}
+          >
+            {chatMessages.length === 0 && (
+              <Text style={styles.chatEmpty}>Chưa có tin nhắn. Chat chạy thẳng giữa 2 máy (không lưu server).</Text>
+            )}
+            {chatMessages.map((m, i) => (
+              <View key={i} style={[styles.chatBubble, m.from === 'me' ? styles.chatBubbleMe : styles.chatBubbleOther]}>
+                <Text style={[styles.chatBubbleText, m.from === 'me' && { color: '#fff' }]}>{m.text}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <View style={styles.chatInputRow}>
+            <TextInput
+              style={styles.chatInput}
+              value={chatText}
+              onChangeText={setChatText}
+              placeholder="Nhắn cho người kia..."
+              placeholderTextColor="#9CA3AF"
+              onSubmitEditing={sendChatMessage}
+              returnKeyType="send"
+            />
+            <TouchableOpacity style={styles.chatSendBtn} onPress={sendChatMessage}>
+              <Ionicons name="send" size={17} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={[styles.controlsBar, fullscreen && styles.controlsBarFs]}>
         <TouchableOpacity
@@ -579,7 +781,7 @@ export default function ClassroomScreen({ user, session, onBack }) {
         <TouchableOpacity
           style={[styles.ctrlBtn, fullscreen && styles.ctrlBtnFs]}
           onPress={flipCamera}
-          disabled={camOff}
+          disabled={camOff || sharingScreen}
         >
           <Ionicons
             name="camera-reverse-outline"
@@ -588,6 +790,42 @@ export default function ClassroomScreen({ user, session, onBack }) {
           />
           <Text style={[styles.ctrlText, fullscreen && styles.ctrlTextFs]}>Đổi cam</Text>
         </TouchableOpacity>
+
+        {Platform.OS === 'android' && (
+          <TouchableOpacity
+            style={[
+              styles.ctrlBtn,
+              fullscreen && styles.ctrlBtnFs,
+              sharingScreen && styles.ctrlBtnShareActive,
+            ]}
+            onPress={toggleScreenShare}
+          >
+            <Ionicons
+              name={sharingScreen ? 'stop-outline' : 'desktop-outline'}
+              size={20}
+              color={sharingScreen ? '#2563EB' : fullscreen ? '#fff' : '#111827'}
+            />
+            <Text
+              style={[
+                styles.ctrlText,
+                fullscreen && styles.ctrlTextFs,
+                sharingScreen && styles.ctrlTextShareActive,
+              ]}
+            >
+              {sharingScreen ? 'Dừng chia sẻ' : 'Chia sẻ MH'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {!fullscreen && (
+          <TouchableOpacity
+            style={[styles.ctrlBtn, showChat && styles.ctrlBtnActive]}
+            onPress={() => setShowChat((v) => !v)}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={showChat ? '#EF4444' : '#111827'} />
+            <Text style={styles.ctrlText}>Chat</Text>
+          </TouchableOpacity>
+        )}
 
         {!fullscreen && (
           <TouchableOpacity style={styles.ctrlBtn} onPress={() => setFullscreen(true)}>
@@ -657,6 +895,20 @@ const styles = StyleSheet.create({
   },
   pipVideo: { width: '100%', height: '100%' },
   pipOff: { alignItems: 'center', justifyContent: 'center' },
+  shareBadge: {
+    position: 'absolute',
+    top: 12,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(37,99,235,0.95)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    zIndex: 8,
+  },
+  shareBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(11,18,32,0.92)',
@@ -750,8 +1002,10 @@ const styles = StyleSheet.create({
   },
   ctrlBtnFs: { backgroundColor: 'rgba(255,255,255,0.12)' },
   ctrlBtnActive: { backgroundColor: '#FEF2F2' },
+  ctrlBtnShareActive: { backgroundColor: '#DBEAFE' },
   ctrlText: { fontSize: 13, fontWeight: '600', color: '#111827' },
   ctrlTextFs: { color: '#fff' },
+  ctrlTextShareActive: { color: '#2563EB' },
   leaveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -777,4 +1031,28 @@ const styles = StyleSheet.create({
   },
   fsText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600', marginRight: 8 },
   fsBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  chatPanel: {
+    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#E5E7EB',
+    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, maxHeight: 320,
+  },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  chatTitle: { fontSize: 14, fontWeight: '800', color: '#111827' },
+  chatList: { maxHeight: 180 },
+  chatEmpty: { fontSize: 12, color: '#9CA3AF', lineHeight: 17, paddingVertical: 6 },
+  chatBubble: {
+    alignSelf: 'flex-start', maxWidth: '82%', borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 6, backgroundColor: '#F3F4F6',
+  },
+  chatBubbleMe: { alignSelf: 'flex-end', backgroundColor: '#2563EB' },
+  chatBubbleOther: { alignSelf: 'flex-start' },
+  chatBubbleText: { fontSize: 13, color: '#111827', lineHeight: 18 },
+  chatInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  chatInput: {
+    flex: 1, backgroundColor: '#F3F4F6', borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 9, fontSize: 13, color: '#111827',
+  },
+  chatSendBtn: {
+    width: 38, height: 38, borderRadius: 19, backgroundColor: '#2563EB',
+    alignItems: 'center', justifyContent: 'center',
+  },
 });

@@ -7,6 +7,10 @@ import {
   newOfferId,
   nextReconnectDelay,
   MAX_RECONNECT_ATTEMPTS,
+  buildIceServers,
+  hasTurnRelay,
+  getJoinWindow,
+  getSessionTimes,
 } from '../lib/webrtc/session.js';
 
 // Gia sư luôn là offerer → không bị xung đột khi 2 bên cùng vào phòng.
@@ -26,8 +30,18 @@ assert.equal(isParticipant({ id: 'student-1' }, session), true);
 assert.equal(isParticipant({ id: 'tutor-1' }, session), true);
 assert.equal(isParticipant({ id: 'nguoi-la' }, session), false);
 
-// Fallback khi session không có course.
-assert.equal(isParticipant({ id: 'student-1' }, { ...session, course: null }), true);
+// Fallback: ID nằm trực tiếp trên session (không qua course) vẫn nhận.
+assert.equal(
+  isParticipant({ id: 'student-1' }, { id: 's2', student_id: 'student-1', tutor_id: 'tutor-1' }),
+  true
+);
+
+// FAIL-CLOSED: session không xác định được HS/gia sư nào → ai cũng bị từ chối.
+// (Bản cũ trả true ở ca này — đã sửa.)
+assert.equal(isParticipant({ id: 'student-1' }, { ...session, course: null }), false);
+assert.equal(isParticipant({ id: 'student-1' }, { id: 's3' }), false);
+assert.equal(isParticipant(null, session), false);
+assert.equal(isParticipant({ id: 'student-1' }, null), false);
 
 // Channel signaling theo session.
 assert.equal(
@@ -35,10 +49,22 @@ assert.equal(
   'signaling:session:abc-123'
 );
 
-// ICE servers chỉ dùng STUN (không relay media qua bên thứ 3).
+// ICE mặc định: chỉ STUN (chưa cấu hình TURN).
 assert.equal(Array.isArray(ICE_SERVERS), true);
 assert.equal(ICE_SERVERS.length, 1);
 assert.equal(typeof ICE_SERVERS[0].urls[0], 'string');
+assert.equal(hasTurnRelay(), false);
+
+// Có TURN_CONFIG hợp lệ → thêm 1 entry TURN, hasTurnRelay() = true.
+const withTurn = buildIceServers({
+  urls: ['turn:turn.example.com:3478?transport=udp'],
+  username: 'eduteach',
+  credential: 'secret',
+});
+assert.equal(withTurn.length, 2);
+assert.equal(withTurn[1].username, 'eduteach');
+// TURN thiếu username → không thêm (tránh ICE lỗi vô ích).
+assert.equal(buildIceServers({ urls: ['turn:x:3478'], username: '' }).length, 1);
 
 // offer_id luôn duy nhất.
 assert.notEqual(newOfferId(), newOfferId());
@@ -51,6 +77,17 @@ assert.equal(nextReconnectDelay(3), 24000);
 assert.equal(nextReconnectDelay(4), 30000);
 assert.equal(nextReconnectDelay(100), 30000);
 assert.equal(MAX_RECONNECT_ATTEMPTS, 6);
+
+// Cửa sổ vào lớp dùng chung: mở -15', đóng +30' sau khi kết thúc (mặc định 2h).
+const startMs = Date.parse('2030-01-01T03:00:00.000Z');
+const classSession = { id: 's4', scheduled_at: '2030-01-01T03:00:00.000Z' };
+assert.equal(getSessionTimes(classSession).end.getTime(), startMs + 2 * 3600000);
+assert.equal(getJoinWindow(classSession, startMs - 16 * 60000).open, false); // sớm quá
+assert.equal(getJoinWindow(classSession, startMs - 15 * 60000).open, true);  // đúng lúc mở
+assert.equal(getJoinWindow(classSession, startMs + 60 * 60000).open, true);   // đang học
+assert.equal(getJoinWindow(classSession, startMs + 150 * 60000).open, true);  // cuối cửa sổ +30'
+assert.equal(getJoinWindow(classSession, startMs + 151 * 60000).open, false); // đã đóng
+assert.equal(getJoinWindow({ id: 's5' }, startMs).open, false);               // chưa xếp lịch
 
 console.log('PASS: Gia su la offerer, HS la answerer');
 console.log('PASS: Chi HS + gia su cua buoi duoc vao phong');

@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cp *)"
+      "Bash(cp *)",
+      "Bash(mkdir *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(npm view *)",
+      "Bash(sed *)",
+      "Bash(xargs *)"
     ]
-  }
+  },
+  "$version": 4
 }

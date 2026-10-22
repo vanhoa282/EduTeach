@@ -29,7 +29,7 @@ import { getNotifUnreadCount } from '../lib/notif';
 import { getUnreadCount, getOrCreateConversation } from '../lib/chat';
 import { supabase } from '../lib/supabase';
 
-export default function TutorMainTabs({ user: initialUser, onLogout }) {
+export default function TutorMainTabs({ user: initialUser, onLogout, pendingDeepLink, onDeepLinkConsumed }) {
   const [user, setUser] = useState(initialUser);
   const [activeTab, setActiveTab] = useState('schedule');
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -85,6 +85,58 @@ export default function TutorMainTabs({ user: initialUser, onLogout }) {
   useEffect(() => {
     if (!activeConv && !selectedStudent) loadCounts();
   }, [activeConv, activeTab, selectedStudent]);
+
+  // Deep-link từ push — mở đúng chat / buổi dạy / đơn.
+  useEffect(() => {
+    if (!pendingDeepLink || !onDeepLinkConsumed) return;
+    const d = pendingDeepLink;
+
+    const resetOverlays = () => {
+      setSubScreen(null);
+      setSelectedStudent(null);
+      setReviewStudent(null);
+      setSelectedNotif(null);
+      setShowWithdraw(false);
+    };
+
+    if (d.type === 'message' && d.conversationId) {
+      resetOverlays();
+      setActiveTab('messages');
+      (async () => {
+        try {
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('*, student:users!conversations_student_id_fkey (id, full_name, phone), tutor:users!conversations_tutor_id_fkey (id, full_name, phone)')
+            .eq('id', d.conversationId)
+            .maybeSingle();
+          if (conv) setActiveConv(conv);
+          else setActiveConv({ id: d.conversationId });
+        } catch (e) {
+          setActiveConv({ id: d.conversationId });
+        }
+        setTimeout(() => onDeepLinkConsumed(), 0);
+      })();
+      return;
+    }
+
+    if (d.type === 'session_reminder') {
+      resetOverlays();
+      // Tutor: session_reminder nên về schedule; nếu có courseId thì vẫn ở schedule
+      setActiveTab('schedule');
+      setTimeout(() => onDeepLinkConsumed(), 0);
+      return;
+    }
+
+    if (d.type === 'order') {
+      resetOverlays();
+      // Tutor: order -> schedule (hoặc wallet nếu có spend-specific); giữ schedule để thấy đơn
+      setActiveTab('schedule');
+      setTimeout(() => onDeepLinkConsumed(), 0);
+      return;
+    }
+
+    setTimeout(() => onDeepLinkConsumed(), 0);
+  }, [pendingDeepLink]);
 
   if (subScreen === 'edit-profile') return <EditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={(u) => { setUser(u); setSubScreen(null); }} />;
   if (subScreen === 'tutor-profile') return <TutorEditProfileScreen user={user} onBack={() => setSubScreen(null)} onSaved={() => setSubScreen(null)} />;
