@@ -28,7 +28,8 @@
             "kotlinVersion": "2.4.20"
           }
         }
-      ]
+      ],
+      "./plugins/with-kotlin-metadata-fix"
     ],
     "ios": {
       "supportsTablet": true,
