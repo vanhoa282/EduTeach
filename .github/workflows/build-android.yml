@@ -1,0 +1,100 @@
+name: Build Android APK (free CI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Ban build"
+        type: choice
+        options:
+          - both
+          - release
+          - devclient
+        default: both
+
+jobs:
+  release:
+    if: ${{ inputs.variant == 'release' || inputs.variant == 'both' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Cai dependencies
+        run: npm ci
+      - name: Giai ma keystore CI
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/eduteach-ci.keystore
+      - name: Prebuild Android
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: "1"
+      - name: Tang RAM cho Gradle
+        run: echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
+      - name: Build APK release
+        working-directory: android
+        run: >-
+          ./gradlew assembleRelease
+          -Pandroid.injected.signing.store.file=/tmp/eduteach-ci.keystore
+          -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }}
+          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
+          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+      - name: Kiem tra chu ky APK
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs "$APK" | head -6
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eduteach-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 14
+
+  devclient:
+    if: ${{ inputs.variant == 'devclient' || inputs.variant == 'both' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Cai dependencies
+        run: npm ci
+      - name: Giai ma keystore CI
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/eduteach-ci.keystore
+      - name: Prebuild Android
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: "1"
+      - name: Tang RAM cho Gradle
+        run: echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
+      - name: Build APK dev client (debug)
+        working-directory: android
+        run: >-
+          ./gradlew assembleDebug
+          -Pandroid.injected.signing.store.file=/tmp/eduteach-ci.keystore
+          -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }}
+          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
+          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+      - name: Kiem tra chu ky APK
+        run: |
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs "$APK" | head -6
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eduteach-devclient-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
