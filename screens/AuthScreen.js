@@ -1,8 +1,9 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signInStudent, signUpStudent, signInTutor } from '../lib/auth';
+import { sendPhoneOtp, confirmPhoneOtp, clearFirebaseSession, mapOtpError, toLocalPhone } from '../lib/phoneOtp';
 import { ScaleButton, FadeInView } from '../components/Animated';
 
 export default function AuthScreen({ onLogin }) {
@@ -13,8 +14,20 @@ export default function AuthScreen({ onLogin }) {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  // OTP đăng ký (chỉ học sinh tự đăng ký mới cần xác minh SĐT)
+  const [otpStep, setOtpStep] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [resendIn, setResendIn] = useState(0);
 
-  const reset = () => { setPhone(''); setPassword(''); setFullName(''); };
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const resetOtp = () => { setOtpStep(false); setConfirmation(null); setOtpCode(''); setResendIn(0); };
+  const reset = () => { setPhone(''); setPassword(''); setFullName(''); resetOtp(); };
   const switchRole = (r) => { setRole(r); setMode('login'); reset(); };
 
   const handleSubmit = async () => {
@@ -23,10 +36,7 @@ export default function AuthScreen({ onLogin }) {
     setLoading(true);
     try {
       let result;
-      if (role === 'student' && mode === 'signup') {
-        if (!fullName.trim()) { setLoading(false); return Alert.alert('Lỗi', 'Vui lòng nhập họ tên'); }
-        result = await signUpStudent({ phone, password, fullName });
-      } else if (role === 'student' && mode === 'login') {
+      if (role === 'student' && mode === 'login') {
         result = await signInStudent({ phone, password });
       } else {
         result = await signInTutor({ phone, password });
@@ -39,6 +49,52 @@ export default function AuthScreen({ onLogin }) {
       Alert.alert('Lỗi', e.message || 'Có lỗi xảy ra');
     }
   };
+
+  // Bước 1 đăng ký: validate form rồi gửi mã OTP qua SMS (Firebase Phone Auth)
+  const handleSendOtp = async () => {
+    if (!fullName.trim()) return Alert.alert('Lỗi', 'Vui lòng nhập họ tên');
+    if (phone.length < 10) return Alert.alert('Lỗi', 'SĐT phải 10 số');
+    if (password.length < 6) return Alert.alert('Lỗi', 'Mật khẩu phải từ 6 ký tự');
+    setLoading(true);
+    try {
+      const conf = await sendPhoneOtp(phone);
+      setConfirmation(conf);
+      setOtpStep(true);
+      setOtpCode('');
+      setResendIn(60);
+    } catch (e) {
+      Alert.alert('Lỗi', e.code ? mapOtpError(e) : (e.message || 'Không gửi được mã OTP'));
+    }
+    setLoading(false);
+  };
+
+  // Bước 2 đăng ký: xác nhận mã → server verify → tạo tài khoản kèm firebase_uid
+  const handleConfirmOtp = async () => {
+    if (!confirmation) return Alert.alert('Lỗi', 'Phiên xác minh đã mất. Bấm gửi lại mã.');
+    if (otpCode.trim().length < 6) return Alert.alert('Lỗi', 'Nhập đủ 6 số trong mã OTP');
+    setLoading(true);
+    try {
+      const verified = await confirmPhoneOtp(confirmation, otpCode);
+      if (toLocalPhone(verified.phone) !== phone) {
+        setLoading(false);
+        return Alert.alert('Lỗi', 'Số điện thoại xác minh không khớp số đã nhập');
+      }
+      const result = await signUpStudent({ phone, password, fullName, firebaseUid: verified.uid });
+      setLoading(false);
+      if (result.error) return Alert.alert('Lỗi', result.error);
+      await clearFirebaseSession();
+      onLogin(result.user);
+    } catch (e) {
+      setLoading(false);
+      Alert.alert('Lỗi', e.code ? mapOtpError(e) : (e.message || 'Có lỗi xảy ra'));
+    }
+  };
+
+  const isOtpSignup = role === 'student' && mode === 'signup';
+  const mainAction = isOtpSignup ? (otpStep ? handleConfirmOtp : handleSendOtp) : handleSubmit;
+  const mainLabel = isOtpSignup
+    ? (otpStep ? 'Xác nhận & Tạo tài khoản' : 'Gửi mã OTP')
+    : (mode === 'signup' ? 'Đăng ký' : 'Đăng nhập');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -92,7 +148,7 @@ export default function AuthScreen({ onLogin }) {
             <Text style={styles.label}>Số điện thoại</Text>
             <View style={styles.inputBox}>
               <Ionicons name="call-outline" size={20} color="#9CA3AF" />
-              <TextInput style={styles.input} placeholder="0901234567" keyboardType="phone-pad" value={phone} onChangeText={setPhone} maxLength={10} placeholderTextColor="#9CA3AF" />
+              <TextInput style={styles.input} placeholder="0901234567" keyboardType="phone-pad" value={phone} onChangeText={setPhone} maxLength={10} placeholderTextColor="#9CA3AF" editable={!otpStep} />
             </View>
 
             <Text style={styles.label}>Mật khẩu</Text>
@@ -104,8 +160,25 @@ export default function AuthScreen({ onLogin }) {
               </TouchableOpacity>
             </View>
 
-            <ScaleButton style={[styles.button, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{mode === 'signup' ? 'Đăng ký' : 'Đăng nhập'}</Text>}
+            {isOtpSignup && otpStep && (
+              <>
+                <Text style={styles.label}>Mã OTP (6 số)</Text>
+                <View style={styles.inputBox}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color="#9CA3AF" />
+                  <TextInput style={styles.input} placeholder="Nhập mã trong tin nhắn SMS" keyboardType="number-pad" value={otpCode} onChangeText={setOtpCode} maxLength={6} placeholderTextColor="#9CA3AF" />
+                </View>
+                <Text style={styles.otpHint}>Mã đã gửi tới số +84{phone.slice(1)}. Kiểm tra tin nhắn SMS nhé.</Text>
+                <View style={styles.otpRow}>
+                  {resendIn > 0
+                    ? <Text style={styles.otpMuted}>Gửi lại mã sau {resendIn}s</Text>
+                    : <TouchableOpacity onPress={handleSendOtp} disabled={loading}><Text style={styles.switchTextBold}>Gửi lại mã</Text></TouchableOpacity>}
+                  <TouchableOpacity onPress={resetOtp}><Text style={styles.otpMuted}>Đổi số điện thoại</Text></TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            <ScaleButton style={[styles.button, loading && { opacity: 0.6 }]} onPress={mainAction} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{mainLabel}</Text>}
             </ScaleButton>
 
             {role === 'student' && (
@@ -147,5 +220,8 @@ const styles = StyleSheet.create({
   switchMode: { alignItems: 'center', marginTop: 20 },
   switchText: { fontSize: 14, color: '#6B7280' },
   switchTextBold: { color: '#2563EB', fontWeight: '600' },
+  otpHint: { fontSize: 12, color: '#6B7280', marginTop: -6, marginBottom: 10, lineHeight: 17 },
+  otpRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  otpMuted: { fontSize: 13, color: '#6B7280' },
   note: { fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 32, lineHeight: 18 },
 });

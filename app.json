@@ -18,7 +18,9 @@
         }
       ],
       "expo-notifications",
-      "./plugins/expo-foreground-actions"
+      "./plugins/expo-foreground-actions",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
     ],
     "ios": {
       "supportsTablet": true,
