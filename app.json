@@ -20,7 +20,15 @@
       "expo-notifications",
       "./plugins/expo-foreground-actions",
       "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "@react-native-firebase/auth",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.4.20"
+          }
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
